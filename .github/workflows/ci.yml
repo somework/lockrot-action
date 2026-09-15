@@ -232,10 +232,13 @@ jobs:
           docker run --rm lockrot:ci --version | grep -Fx "lockrot ${LOCKROT_VERSION}"
           docker run --rm -v "$PWD/tests/fixtures/project:/app:ro" lockrot:ci --target-php=8.4 --format=json --fail-on=none > report.json
           jq -e '.findings | length >= 1' report.json
-          # any uid must work: COMPOSER_HOME lives under /tmp
+          # any uid must work: COMPOSER_HOME lives under /tmp. Exit 0 or 1 both mean lockrot ran
+          # (the verdict depends on GitHub answering); 2 would be a tool error.
           code=0
-          docker run --rm --user 12345:12345 -v "$PWD/tests/fixtures/project:/app:ro" lockrot:ci --target-php=8.4 --format=table --fail-on=silent || code=$?
-          [ "$code" -eq 1 ]
+          docker run --rm --user 12345:12345 -v "$PWD/tests/fixtures/project:/app:ro" lockrot:ci --target-php=8.4 --format=table --fail-on=silent > table.txt || code=$?
+          cat table.txt
+          [ "$code" -le 1 ]
+          grep -q '3 packages checked' table.txt
           # .Size is the unpacked size on the classic image store and the compressed content size on
           # the containerd store; the pruned image is 44 MB unpacked, 16 MB compressed.
           size=$(docker image inspect lockrot:ci --format '{{.Size}}')
