@@ -54,13 +54,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: bats-core/bats-action@77d6fb60505b4d0d1d73e48bd035b55074bbfb43 # 4.0.0
-        with:
-          support-install: false
-          assert-install: false
-          detik-install: false
-          file-install: false
-      - run: bats --print-output-on-failure tests/unit
+      # A shallow clone pinned to a commit: the release tarball would come through api.github.com,
+      # whose anonymous rate limit is shared by every hosted runner on the same address.
+      - name: Install bats
+        env:
+          BATS_COMMIT: eb7f42f8d608ac693d7a4b67474f6714ea68cfc5 # v1.14.0
+        run: |
+          git clone -q --filter=blob:none https://github.com/bats-core/bats-core.git "$RUNNER_TEMP/bats-core"
+          git -C "$RUNNER_TEMP/bats-core" -c advice.detachedHead=false checkout -q "$BATS_COMMIT"
+          "$RUNNER_TEMP/bats-core/install.sh" "$RUNNER_TEMP/bats" > /dev/null
+          echo "$RUNNER_TEMP/bats/bin" >> "$GITHUB_PATH"
+      - run: bats --version && bats --print-output-on-failure tests/unit
 
   e2e:
     name: End to end (${{ matrix.os }})
@@ -238,7 +242,7 @@ jobs:
           echo "image size: $size bytes (docker image inspect), $(docker save lockrot:ci | gzip -c | wc -c | tr -d ' ') bytes gzipped"
           [ "$size" -lt 60000000 ]
       - name: Trivy
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: lockrot:ci
           format: table

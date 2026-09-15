@@ -70,7 +70,7 @@ jobs:
           docker run --rm -v "$PWD/tests/fixtures/project:/app:ro" lockrot:test --target-php=8.4 --format=json --fail-on=none > report.json
           jq -e '.findings | length >= 1' report.json
       - name: Trivy
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: lockrot:test
           format: table

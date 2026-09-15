@@ -17,7 +17,7 @@
 ## Running the checks locally
 
 ```bash
-bats tests/unit                                      # unit tests, no network
+bats tests/unit                                      # unit tests, no network (bats-core 1.14+)
 shellcheck -x src/*.sh tests/unit/stubs/* tests/unit/helpers.bash
 actionlint
 uvx zizmor --persona pedantic .
