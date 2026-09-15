@@ -38,7 +38,7 @@ inputs:
     required: false
     default: github
   output:
-    description: Where to write the report, relative to the workspace. Empty keeps it under RUNNER_TEMP; the path is the report output either way.
+    description: Where to write the report, relative to the workspace or absolute. Empty keeps it under RUNNER_TEMP; the path is the report output either way.
     required: false
     default: ''
   dev:
@@ -62,7 +62,7 @@ inputs:
     required: false
     default: 'false'
   args:
-    description: Extra command-line options passed to lockrot as given, split on whitespace.
+    description: Extra command-line options passed to lockrot as given, split on whitespace. An option lockrot does not know fails the step with exit 1.
     required: false
     default: ''
   github-token:
@@ -80,7 +80,7 @@ inputs:
     required: false
     default: 'true'
   summary:
-    description: Add the report, rendered as markdown, to the job summary.
+    description: Add the report, rendered as markdown, to the job summary (skipped above 1 MB, the runner's limit).
     required: false
     default: 'true'
 
@@ -109,6 +109,7 @@ runs:
         INPUT_CHECKSUM: ${{ inputs.checksum }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         INPUT_PHP_VERSION: ${{ inputs.php-version }}
+        INPUT_CACHE: ${{ inputs.cache }}
       run: bash "${GITHUB_ACTION_PATH//\\//}/src/setup.sh"
 
     - name: Install PHP
@@ -125,7 +126,7 @@ runs:
 
     - id: restore
       name: Restore metadata cache
-      if: inputs.cache == 'true'
+      if: steps.setup.outputs.cache-enabled == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.setup.outputs.cache-dir }}
@@ -139,6 +140,7 @@ runs:
       shell: bash
       env:
         LOCKROT_PHAR: ${{ steps.setup.outputs.phar }}
+        LOCKROT_SHA256: ${{ steps.setup.outputs.sha256 }}
         LOCKROT_VERSION: ${{ steps.setup.outputs.version }}
         LOCKROT_CACHE_DIR: ${{ steps.setup.outputs.cache-dir }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
@@ -157,7 +159,7 @@ runs:
       run: bash "${GITHUB_ACTION_PATH//\\//}/src/run.sh"
 
     - name: Save metadata cache
-      if: inputs.cache == 'true' && steps.restore.outputs.cache-hit != 'true'
+      if: steps.setup.outputs.cache-enabled == 'true' && steps.restore.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.setup.outputs.cache-dir }}
@@ -168,6 +170,6 @@ runs:
       env:
         LOCKROT_EXIT_CODE: ${{ steps.run.outputs.exit-code }}
       run: |
-        if [ "$LOCKROT_EXIT_CODE" != "0" ]; then
+        if [ -n "$LOCKROT_EXIT_CODE" ] && [ "$LOCKROT_EXIT_CODE" != "0" ]; then
           exit "$LOCKROT_EXIT_CODE"
         fi

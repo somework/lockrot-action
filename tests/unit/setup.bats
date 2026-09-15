@@ -18,9 +18,11 @@ run_setup() { run bash "$GITHUB_ACTION_PATH/src/setup.sh"; }
   [ "$(output_value version)" = "0.2.1" ]
   [ "$(output_value phar)" = "$RUNNER_TEMP/lockrot/lockrot.phar" ]
   [ "$(cat "$RUNNER_TEMP/lockrot/lockrot.phar")" = "pinned archive bytes" ]
-  [ "$(output_value cache-dir)" = "$RUNNER_TEMP/lockrot/cache" ]
-  [ -d "$RUNNER_TEMP/lockrot/cache" ]
+  [ "$(output_value sha256)" = "$PINNED_SHA" ]
+  [ "$(output_value cache-dir)" = "$RUNNER_TEMP/lockrot-cache" ]
+  [ -d "$RUNNER_TEMP/lockrot-cache" ]
   [ "$(output_value php-needed)" = "false" ]
+  [ "$(output_value cache-enabled)" = "true" ]
   lock_hash=$(output_value lock-hash)
   [ "${#lock_hash}" -eq 16 ]
   [[ "$(output_value cache-date)" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
@@ -64,6 +66,34 @@ run_setup() { run bash "$GITHUB_ACTION_PATH/src/setup.sh"; }
   [ "$status" -eq 0 ]
   [ "$(output_value version)" = "9.9.9" ]
   [ "$(cat "$RUNNER_TEMP/lockrot/lockrot.phar")" = "newest archive" ]
+}
+
+@test "a latest redirect that is not a release version is refused" {
+  export INPUT_VERSION=latest CURL_STUB_REDIRECT="https://github.com/somework/lockrot/releases/download/vmain/../x/lockrot.phar"
+  run_setup
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not a lockrot release version"* ]]
+}
+
+@test "inputs with line breaks and absolute working directories are refused" {
+  export INPUT_VERSION="0.2.1
+evil=1"
+  run_setup
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"the VERSION input must not contain a line break"* ]]
+  export INPUT_VERSION= INPUT_WORKING_DIRECTORY="$GITHUB_WORKSPACE/project"
+  run_setup
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"working-directory input must be relative to the workspace"* ]]
+}
+
+@test "cache-enabled follows the usual boolean spellings" {
+  export INPUT_CACHE=Yes
+  run_setup
+  [ "$(output_value cache-enabled)" = "true" ]
+  export INPUT_CACHE=off
+  run_setup
+  [ "$(output_value cache-enabled)" = "false" ]
 }
 
 @test "the checksum input wins over the pinned hash" {

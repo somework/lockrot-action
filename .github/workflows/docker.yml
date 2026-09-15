@@ -152,7 +152,7 @@ jobs:
             echo 'Verify:'
             echo '```bash'
             echo "cosign verify ${IMAGE}@${DIGEST} \\"
-            echo "  --certificate-identity-regexp '^https://github.com/somework/lockrot-action/' \\"
+            echo "  --certificate-identity-regexp '^https://github\\.com/somework/lockrot-action/\\.github/workflows/docker\\.yml@' \\"
             echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
             echo "gh attestation verify oci://${IMAGE}@${DIGEST} --owner somework"
             echo '```'

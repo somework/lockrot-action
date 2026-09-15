@@ -6,8 +6,9 @@
 #
 #   docker build --build-arg LOCKROT_VERSION=0.2.1 --build-arg LOCKROT_SHA256=<hex> -t lockrot .
 #
-# The base is pinned by digest on every FROM line; Dependabot proposes digest updates
-# (.github/dependabot.yml). The three lines must name the same image.
+# The base is pinned by digest on both FROM lines that use it; Dependabot proposes digest updates
+# (.github/dependabot.yml) and rewrites both. The `org.opencontainers.image.base.name` label at
+# the end names the same image without a digest and is maintained by hand.
 
 # --- stage 1: fetch and verify the archive ------------------------------------------------------
 FROM php:8.4-cli-alpine@sha256:2f389f933c3cc58cc622bd243bb4ecff7e6553e2de4387a239bca640c988be19 AS download

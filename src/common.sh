@@ -16,13 +16,44 @@ warn() { printf '::warning::lockrot-action: %s\n' "$*"; }
 notice() { printf '::notice::lockrot-action: %s\n' "$*"; }
 log() { printf 'lockrot-action: %s\n' "$*"; }
 
+# $1 name, $2 value. The heredoc form: a value can then never be read as a second `name=value`
+# line, whatever it contains. Inputs are refused with line breaks anyway (see reject_line_breaks).
 set_output() {
-  # $1 name, $2 single-line value
+  local delimiter
+  delimiter="lockrot_$$_${RANDOM}${RANDOM}"
   if [ -z "${GITHUB_OUTPUT:-}" ]; then
     log "output $1=$2"
     return 0
   fi
-  printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+  printf '%s<<%s\n%s\n%s\n' "$1" "$delimiter" "$2" "$delimiter" >> "$GITHUB_OUTPUT"
+}
+
+# Every input reaches the scripts through an INPUT_* variable; none of them has a legitimate line
+# break, and one inside a path or a version could only be an attempt to write a second line
+# somewhere. $@ are the variable names to check.
+reject_line_breaks() {
+  local name value newline carriage
+  # Command substitution strips trailing newlines, so the characters are built with a sentinel.
+  newline=$(printf '\n.')
+  newline=${newline%.}
+  carriage=$(printf '\r.')
+  carriage=${carriage%.}
+  for name in "$@"; do
+    eval "value=\${$name:-}"
+    case "$value" in
+      *"$newline"*|*"$carriage"*)
+        fail "the ${name#INPUT_} input must not contain a line break" ;;
+    esac
+  done
+}
+
+# working-directory names a place inside the checkout; an absolute path would also break the
+# annotation paths, which GitHub resolves against the repository root.
+reject_absolute_path() {
+  # $1 input name, $2 value
+  case "$2" in
+    /*|[A-Za-z]:/*|[A-Za-z]:\\*) fail "the $1 input must be relative to the workspace, not '$2'" ;;
+  esac
 }
 
 # Backslashes become slashes: Git Bash on Windows accepts `D:/a/_temp` everywhere, and so do

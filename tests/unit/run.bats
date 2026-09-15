@@ -3,8 +3,11 @@ load helpers
 
 setup() {
   github_env
-  export LOCKROT_PHAR="$RUNNER_TEMP/lockrot/lockrot.phar" LOCKROT_VERSION=9.9.9 LOCKROT_CACHE_DIR="$RUNNER_TEMP/lockrot/cache"
-  mkdir -p "$RUNNER_TEMP/lockrot"
+  export LOCKROT_PHAR="$RUNNER_TEMP/lockrot/lockrot.phar" LOCKROT_VERSION=9.9.9 LOCKROT_CACHE_DIR="$RUNNER_TEMP/lockrot-cache"
+  mkdir -p "$RUNNER_TEMP/lockrot" "$LOCKROT_CACHE_DIR"
+  printf 'verified archive bytes' > "$LOCKROT_PHAR"
+  LOCKROT_SHA256=$(shasum -a 256 "$LOCKROT_PHAR" | cut -c1-64)
+  export LOCKROT_SHA256
   export INPUT_WORKING_DIRECTORY=project INPUT_FORMAT=github INPUT_OUTPUT= INPUT_FAIL_ON= INPUT_TARGET_PHP= \
     INPUT_DEV=false INPUT_ALL=false INPUT_STRICT_NETWORK=false INPUT_BASELINE= INPUT_GENERATE_BASELINE=false \
     INPUT_ARGS= INPUT_GITHUB_TOKEN= INPUT_SUMMARY=true
@@ -20,7 +23,6 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [ "$status" -eq 0 ]
   [ "$(main_call)" = "$LOCKROT_PHAR --format=github --fail-on=silent --target-php=8.4 --baseline=b.json --dev --all --strict-network --foo --bar=1" ]
   [ "$(output_value exit-code)" = "1" ]
-  [ "$(output_value version)" = "9.9.9" ]
   [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.txt" ]
   [[ "$output" == *"running lockrot 9.9.9: --format=github --fail-on=silent"* ]]
 }
@@ -108,6 +110,42 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   : > "$SCRATCH/env.log"
   run_run
   grep -q "^unset|$LOCKROT_CACHE_DIR$" "$SCRATCH/env.log"
+}
+
+@test "an archive that changed after verification is refused" {
+  printf 'swapped' > "$LOCKROT_PHAR"
+  run_run
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"lockrot.phar changed after it was verified"* ]]
+  [ ! -s "$PHP_STUB_LOG" ]
+}
+
+@test "args are split on whitespace but never globbed" {
+  export INPUT_ARGS='--all *'
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --all *" ]
+}
+
+@test "a line break in an input is refused before anything runs" {
+  export INPUT_OUTPUT="report.txt
+exit-code=0"
+  run_run
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"the OUTPUT input must not contain a line break"* ]]
+  [ ! -s "$PHP_STUB_LOG" ]
+}
+
+@test "a report above the summary limit leaves a note instead" {
+  export INPUT_FORMAT=markdown
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nhead -c 1000001 /dev/zero | tr "\\0" x\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  grep -q 'more than the job summary can hold' "$GITHUB_STEP_SUMMARY"
+  [ "$(wc -c < "$GITHUB_STEP_SUMMARY" | tr -d ' ')" -lt 1000 ]
 }
 
 @test "an unknown format is refused" {

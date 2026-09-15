@@ -11,10 +11,13 @@ php_is_usable() {
 }
 
 main() {
+  reject_line_breaks INPUT_VERSION INPUT_CHECKSUM INPUT_WORKING_DIRECTORY INPUT_PHP_VERSION INPUT_CACHE
+
   local action_path work_dir pinned_version pinned_sha requested version expected
   action_path=$(native_path "${GITHUB_ACTION_PATH:?GITHUB_ACTION_PATH is not set}")
-  work_dir=$(native_path "${INPUT_WORKING_DIRECTORY:-.}")
+  work_dir=$(native_path "$(trim "${INPUT_WORKING_DIRECTORY:-.}")")
   [ -n "$work_dir" ] || work_dir=.
+  reject_absolute_path working-directory "$work_dir"
   [ -f "$work_dir/composer.lock" ] || fail "no composer.lock in '$work_dir' (working-directory)"
 
   pinned_version=$(read_env_value "$action_path/lockrot.env" LOCKROT_VERSION)
@@ -25,7 +28,7 @@ main() {
   if [ -z "$requested" ]; then
     version=$pinned_version
   elif [ "$requested" = "latest" ]; then
-    version=$(resolve_latest_version)
+    version=$(normalize_version "$(resolve_latest_version)")
   else
     version=$(normalize_version "$requested")
   fi
@@ -35,9 +38,13 @@ main() {
     expected=$pinned_sha
   fi
 
-  local dir base phar actual
-  dir="$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")/lockrot"
-  mkdir -p "$dir/cache"
+  local temp dir base phar actual
+  temp=$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")
+  dir="$temp/lockrot"
+  # The cache is restored by a separate action into a directory of its own, beside the archive's
+  # directory rather than inside it, so nothing a cache archive contains can sit next to the
+  # verified file.
+  mkdir -p "$dir" "$temp/lockrot-cache"
   base="${LOCKROT_RELEASES}/download/v${version}"
   phar="$dir/lockrot.phar"
   rm -f "$phar"
@@ -61,10 +68,17 @@ main() {
     log "no PHP 7.4+ on this runner; installing one with shivammathur/setup-php"
   fi
 
+  local cache_enabled=false
+  if is_true "${INPUT_CACHE:-true}"; then
+    cache_enabled=true
+  fi
+
   set_output phar "$phar"
+  set_output sha256 "$actual"
   set_output version "$version"
   set_output php-needed "$php_needed"
-  set_output cache-dir "$dir/cache"
+  set_output cache-enabled "$cache_enabled"
+  set_output cache-dir "$temp/lockrot-cache"
   set_output lock-hash "$(sha256_of "$work_dir/composer.lock" | cut -c1-16)"
   set_output cache-date "$(date -u +%Y-%m-%d)"
 }

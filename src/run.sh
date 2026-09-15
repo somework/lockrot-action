@@ -24,10 +24,18 @@ build_args() {
 }
 
 main() {
-  local phar version work_dir format
+  reject_line_breaks INPUT_WORKING_DIRECTORY INPUT_FORMAT INPUT_OUTPUT INPUT_FAIL_ON INPUT_TARGET_PHP \
+    INPUT_BASELINE INPUT_ARGS INPUT_GITHUB_TOKEN
+
+  local phar version expected actual work_dir format
   phar=${LOCKROT_PHAR:?LOCKROT_PHAR is not set}
   version=${LOCKROT_VERSION:?LOCKROT_VERSION is not set}
-  work_dir=$(native_path "${INPUT_WORKING_DIRECTORY:-.}")
+  expected=${LOCKROT_SHA256:?LOCKROT_SHA256 is not set}
+  # Verified again right before it runs: two other actions ran between the download and this
+  # step, and the check costs a few milliseconds.
+  actual=$(sha256_of "$phar")
+  [ "$actual" = "$expected" ] || fail "lockrot.phar changed after it was verified (sha256 ${actual}, verified ${expected}); nothing will run"
+  work_dir=$(native_path "$(trim "${INPUT_WORKING_DIRECTORY:-.}")")
   [ -n "$work_dir" ] || work_dir=.
   format=$(trim "${INPUT_FORMAT:-github}")
   case "$format" in
@@ -49,10 +57,13 @@ main() {
     args+=(--generate-baseline)
   fi
   if [ -n "$(trim "${INPUT_ARGS:-}")" ]; then
-    # Word-split on whitespace only; quoting is not interpreted.
+    # Word-split on whitespace only: quoting is not interpreted, and `set -f` keeps a `*` from
+    # turning into file names.
     local -a extra
+    set -f
     # shellcheck disable=SC2206
     extra=(${INPUT_ARGS})
+    set +f
     args+=("${extra[@]}")
   fi
 
@@ -101,7 +112,21 @@ main() {
 
   set_output exit-code "$code"
   set_output report "$report"
-  set_output version "$version"
+}
+
+# The runner refuses a step summary above 1 MiB; a report that large is left to the log and the
+# report file. The offline note is an artefact of how the summary is rendered, not of the run it
+# shows, so it is dropped.
+SUMMARY_LIMIT_BYTES=1000000
+append_summary() {
+  local size
+  size=$(wc -c < "$1" | tr -d ' ')
+  if [ "$size" -gt "$SUMMARY_LIMIT_BYTES" ]; then
+    printf '### lockrot\n\nThe report is %s bytes, more than the job summary can hold; see the step log or the report file.\n' "$size" >> "$GITHUB_STEP_SUMMARY"
+    return 0
+  fi
+  grep -v -F -x -e "- note: offline: repository metadata served from Composer's cache" "$1" \
+    >> "$GITHUB_STEP_SUMMARY" || true
 }
 
 # The markdown format is the one shaped for a page, so it is what the job summary shows. When the
@@ -110,17 +135,16 @@ main() {
 write_summary() {
   local phar=$1 work_dir=$2 format=$3 report=$4
   if [ "$format" = "markdown" ]; then
-    cat "$report" >> "$GITHUB_STEP_SUMMARY"
+    append_summary "$report"
     return 0
   fi
   build_args
   local -a args=(--format=markdown --offline ${COMMON_ARGS[@]+"${COMMON_ARGS[@]}"})
-  local summary="${report%.*}.summary.md" code=0
+  local summary code=0
+  summary="$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")/lockrot/summary.md"
   (cd "$work_dir" && php "$phar" "${args[@]}") > "$summary" 2> "$summary.err" || code=$?
   if [ "$code" -le 1 ]; then
-    # The offline note is an artefact of how the summary is rendered, not of the run it shows.
-    grep -v -F -x -e "- note: offline: repository metadata served from Composer's cache" "$summary" \
-      >> "$GITHUB_STEP_SUMMARY" || true
+    append_summary "$summary"
   else
     warn "job summary skipped: the offline summary run exited with ${code}: $(tr '\n' ' ' < "$summary.err")"
   fi

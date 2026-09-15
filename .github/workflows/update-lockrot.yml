@@ -2,16 +2,22 @@ name: Update lockrot
 
 # Checks GitHub for a newer lockrot release, verifies its lockrot.phar against the published
 # sha256, runs this action once with it, and opens a pull request that bumps lockrot.env.
-# With the default GITHUB_TOKEN that pull request does not trigger CI on its own (GitHub's rule
-# for token-created events); set the UPDATE_TOKEN secret to a fine-grained token with contents
-# and pull-requests write access to have CI run on the PR as usual.
+#
+# Two jobs on purpose. The first downloads and executes the new release, so it runs with read
+# access only and hands lockrot no token at all; the second, which can push a branch and open the
+# pull request, never touches the archive. A release nobody has reviewed yet must not run next to
+# write credentials for this repository.
+#
+# With the default GITHUB_TOKEN the pull request does not trigger CI on its own (GitHub's rule for
+# token-created events); set the UPDATE_TOKEN secret to a fine-grained token with contents and
+# pull-requests write access to have CI run on it as usual.
 
 on:
   schedule:
     - cron: '23 5 * * *'
   workflow_dispatch:
 
-# Nothing by default; the one job asks to push a branch and open the pull request.
+# Nothing by default; each job lists what it needs.
 permissions: {}
 
 concurrency:
@@ -19,11 +25,14 @@ concurrency:
 
 jobs:
   check:
-    name: Check for a new release
+    name: Check and try the newest release
     runs-on: ubuntu-latest
     permissions:
-      contents: write # push the chore/lockrot-* branch
-      pull-requests: write # open the pull request
+      contents: read # checkout
+    outputs:
+      update: ${{ steps.latest.outputs.update }}
+      version: ${{ steps.latest.outputs.version }}
+      sha256: ${{ steps.latest.outputs.sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,6 +50,9 @@ jobs:
           esac
           latest=${redirect%/lockrot.phar}
           latest=${latest##*/download/v}
+          if ! printf '%s' "$latest" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$latest' is not a release version"; exit 1
+          fi
           echo "pinned=$pinned latest=$latest"
           if [ "$latest" = "$pinned" ]; then
             echo "update=false" >> "$GITHUB_OUTPUT"
@@ -49,7 +61,10 @@ jobs:
           curl -fsSL --retry 3 -o lockrot.phar "https://github.com/somework/lockrot/releases/download/v${latest}/lockrot.phar"
           curl -fsSL --retry 3 -o lockrot.phar.sha256 "https://github.com/somework/lockrot/releases/download/v${latest}/lockrot.phar.sha256"
           sha256sum -c lockrot.phar.sha256
-          hash=$(cut -c1-64 lockrot.phar.sha256)
+          hash=$(head -n 1 lockrot.phar.sha256 | cut -c1-64)
+          if ! printf '%s' "$hash" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "::error::no sha256 in lockrot.phar.sha256"; exit 1
+          fi
           rm -f lockrot.phar lockrot.phar.sha256
           sed -i -e "s/^LOCKROT_VERSION=.*/LOCKROT_VERSION=${latest}/" -e "s/^LOCKROT_SHA256=.*/LOCKROT_SHA256=${hash}/" lockrot.env
           git diff --stat
@@ -65,20 +80,44 @@ jobs:
           working-directory: tests/fixtures/project
           target-php: '8.4'
           fail-on: none
-      - name: Open a pull request
-        if: steps.latest.outputs.update == 'true'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+          github-token: ''
+          cache: 'false'
+          summary: 'false'
+
+  propose:
+    name: Open the pull request
+    needs: check
+    if: needs.check.outputs.update == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the chore/lockrot-* branch
+      pull-requests: write # open the pull request
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pin the release
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          SHA256: ${{ needs.check.outputs.sha256 }}
+        run: |
+          set -eu
+          printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+          printf '%s' "$SHA256" | grep -Eq '^[0-9a-f]{64}$'
+          sed -i -e "s/^LOCKROT_VERSION=.*/LOCKROT_VERSION=${VERSION}/" -e "s/^LOCKROT_SHA256=.*/LOCKROT_SHA256=${SHA256}/" lockrot.env
+          git diff
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           token: ${{ secrets.UPDATE_TOKEN || github.token }}
-          branch: chore/lockrot-${{ steps.latest.outputs.version }}
+          branch: chore/lockrot-${{ needs.check.outputs.version }}
           delete-branch: true
           sign-commits: true
-          commit-message: 'chore: lockrot ${{ steps.latest.outputs.version }}'
-          title: 'chore: lockrot ${{ steps.latest.outputs.version }}'
+          commit-message: 'chore: lockrot ${{ needs.check.outputs.version }}'
+          title: 'chore: lockrot ${{ needs.check.outputs.version }}'
           labels: dependencies
           body: |
-            Pins lockrot ${{ steps.latest.outputs.version }} (`${{ steps.latest.outputs.sha256 }}`), verified against the published `lockrot.phar.sha256` and run once against the fixture project by this workflow.
+            Pins lockrot ${{ needs.check.outputs.version }} (`${{ needs.check.outputs.sha256 }}`), verified against the published `lockrot.phar.sha256` and run once against the fixture project in the read-only job of this workflow.
 
-            Release notes: https://github.com/somework/lockrot/releases/tag/v${{ steps.latest.outputs.version }}
+            Release notes: https://github.com/somework/lockrot/releases/tag/v${{ needs.check.outputs.version }}
 
             After merging, publish a release of this action so `v1` and the Docker image pick it up.

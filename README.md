@@ -57,20 +57,20 @@ other CI systems and local runs.
 | `fail-on` | *(lockrot's own default: `none`)* | Verdict that fails the step: `none`, `stale`, `old-promise`, `pinned`, `silent`, `abandoned`. Empty defers to `extra.lockrot.fail-on` in `composer.json` |
 | `target-php` | *(`config.platform.php`, else the running PHP)* | PHP version the project targets, for the `old-promise` check. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab` or `markdown` |
-| `output` | | Where to write the report, relative to the workspace. Empty keeps it under `RUNNER_TEMP`; either way the path is the `report` output |
+| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it under `RUNNER_TEMP`; either way the path is the `report` output |
 | `working-directory` | `.` | Directory holding `composer.json` and `composer.lock` |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
 | `all` | `false` | Report every checked package, not only flagged ones (`--all`) |
 | `baseline` | *(`lockrot-baseline.json`)* | Baseline file to read (`--baseline`) |
 | `generate-baseline` | `false` | Write this run's findings to the baseline and exit 0 (`--generate-baseline`) |
 | `strict-network` | `false` | Exit 1 when a Composer repository or GitHub could not be reached |
-| `args` | | Extra lockrot options, split on whitespace |
+| `args` | | Extra lockrot options, split on whitespace. A misspelt option fails the step with exit 1 |
 | `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.1` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
 | `github-token` | `${{ github.token }}` | Token for GitHub repository-activity checks. Without one, checks are capped at 50 packages |
 | `php-version` | | PHP to install with setup-php before running. Empty uses the runner's PHP when it is 7.4+ |
 | `cache` | `true` | Cache repository metadata and GitHub responses between runs |
-| `summary` | `true` | Add the report, rendered as markdown, to the job summary |
+| `summary` | `true` | Add the report, rendered as markdown, to the job summary (skipped above the runner's 1 MB limit) |
 
 Every lockrot option not listed here can be passed through `args`, and everything can also live under
 `extra.lockrot` in `composer.json` — see the
@@ -156,8 +156,9 @@ steps:
   - if: github.event_name == 'pull_request'
     env:
       GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
       REPORT: ${{ steps.lockrot.outputs.report }}
-    run: gh pr comment "${{ github.event.pull_request.number }}" --body-file "$REPORT"
+    run: gh pr comment "$PR" --body-file "$REPORT"
 ```
 
 ### Accept what you have, fail on what arrives
@@ -165,15 +166,15 @@ steps:
 A large project rarely starts clean. Generate a [baseline](https://lockrot.dev/baseline/) once,
 commit it, and from then on only new or worsened findings fail the build:
 
-```yaml
-- uses: somework/lockrot-action@v1
-  with:
-    target-php: '8.4'
-    generate-baseline: 'true'
+```bash
+composer lockrot --target-php=8.4 --generate-baseline     # or the PHAR, or the Docker image
+git add lockrot-baseline.json && git commit -m "chore: accept current dependency rot"
 ```
 
 Every later run with a `lockrot-baseline.json` next to `composer.json` compares against it
-automatically; no extra input is needed.
+automatically; no extra input is needed. The `generate-baseline` input does the same on a runner —
+useful in a scheduled job that commits the file through a pull request — but the workspace is
+discarded when the job ends, so on its own the file goes nowhere.
 
 ### A project in a subdirectory
 
@@ -184,12 +185,14 @@ automatically; no extra input is needed.
     target-php: '8.4'
 ```
 
-Annotations are rewritten to `apps/api/composer.lock` so they land on the right file.
+Annotations are rewritten to `apps/api/composer.lock` so they land on the right file. SARIF is
+not: lockrot writes `composer.lock` relative to the directory it ran in, and code scanning resolves
+that against the checkout root, so a subdirectory project's alerts point at the wrong path there.
 
 ### macOS and self-hosted runners
 
-The action installs PHP when the runner has none, so nothing changes. To pick the version, or to
-force a fresh install:
+The action installs PHP when the runner has none, so nothing changes. Self-hosted runners need
+runner 2.293 or newer for the conditional steps. To pick the version, or to force a fresh install:
 
 ```yaml
 - uses: somework/lockrot-action@v1
@@ -213,9 +216,10 @@ A development package is reported the same way, one priority step lower.
   [`lockrot.env`](lockrot.env), committed to this repository and reviewed like any other change; a
   tampered download stops the run. An explicit `version` is verified against the `.sha256` that the
   lockrot release publishes, and `checksum` lets you pin your own.
-- **Least privilege.** The action reads the workspace and needs `contents: read` only. The token in
-  `github-token` is passed to lockrot, which sends it to `api.github.com` alone; it is never used for
-  the download.
+- **Least privilege.** The action needs `contents: read` only. It reads the workspace and writes
+  to it in two cases you ask for: the `output` file and the baseline on `generate-baseline`. The
+  token in `github-token` is passed to lockrot, which sends it to `api.github.com` alone; it is
+  never used for the download.
 - **No script injection.** Inputs reach the scripts through environment variables, never through
   template expansion inside `run:` blocks.
 - **Pinned dependencies.** The two actions this one uses — `actions/cache` and
@@ -224,7 +228,16 @@ A development package is reported the same way, one priority step lower.
   token, so it never writes the workflow token into Composer's global `auth.json` for later steps
   to pick up.
 - **Network.** `github.com` release assets, the Composer repositories configured in the project
-  (`repo.packagist.org` by default) and `api.github.com`. Nothing else is contacted.
+  (`repo.packagist.org` by default), `api.github.com`, and GitHub's own cache service through
+  `actions/cache`. On a runner without PHP, setup-php fetches its interpreter from its own release
+  assets and the platform's package sources.
+- **The metadata cache steers verdicts.** It holds Composer's repository metadata and lockrot's
+  GitHub responses. GitHub scopes cache entries to the branch that wrote them, so a pull request
+  from a fork cannot feed one to `main`; someone with push access can, which is the same trust as
+  pushing a workflow change. The archive itself is verified again right before it runs.
+- **`generate-baseline` writes a file.** Where it writes is set by `baseline` or by
+  `extra.lockrot.baseline` in the project's `composer.json`, so do not run it on pull requests from
+  people you would not let write to the runner. Generate baselines locally or on `main`.
 - **Checked on every change**: [zizmor](https://docs.zizmor.sh/), actionlint, shellcheck, hadolint,
   Trivy on the image, bats unit tests and an end-to-end matrix on Ubuntu, Windows and macOS.
   [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/somework/lockrot-action) runs weekly.
@@ -270,6 +283,8 @@ lockrot:
     entrypoint: [""]
   variables:
     COMPOSER_CACHE_DIR: $CI_PROJECT_DIR/.lockrot-cache
+    # The image runs as uid 65532; this makes the docker executor's checkout writable to it.
+    FF_DISABLE_UMASK_FOR_DOCKER_EXECUTOR: "true"
   cache:
     key: lockrot-$CI_COMMIT_REF_SLUG
     paths: [.lockrot-cache]
@@ -286,18 +301,20 @@ identity and carries a build-provenance attestation and an SBOM:
 
 ```bash
 cosign verify ghcr.io/somework/lockrot:0.2.1 \
-  --certificate-identity-regexp '^https://github.com/somework/lockrot-action/' \
+  --certificate-identity-regexp '^https://github\.com/somework/lockrot-action/\.github/workflows/docker\.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 gh attestation verify oci://ghcr.io/somework/lockrot:0.2.1 --owner somework
 ```
 
-The image is rebuilt weekly so base-image fixes reach the published tags; a rebuild keeps the tag
-and changes the digest, which is why the signature and attestation are per digest.
+Base-image fixes arrive as Dependabot digest bumps to the Dockerfile; the image is rebuilt on every
+release of this action and once a week, so a merged bump reaches the published tags within days. A
+rebuild keeps the tag and changes the digest, which is why the signature and attestation are per
+digest.
 
 ## FAQ
 
 **Why is this not a Docker action?** Pulling an image costs a few seconds and works on Linux runners
-only; downloading a 1.3 MB archive and running it on the PHP already on the runner costs under a
+only; downloading a 1.2 MB archive and running it on the PHP already on the runner costs under a
 second and works everywhere, including Windows and macOS. A composite action can also wrap the
 metadata cache and pick any lockrot release through an input, which a fixed image reference cannot.
 The image exists for everything that is not GitHub Actions.

@@ -38,8 +38,12 @@ pin_release() {
   printf 'LOCKROT_VERSION=%s\nLOCKROT_SHA256=%s\n' "$1" "$2" > "$GITHUB_ACTION_PATH/lockrot.env"
 }
 
+# Outputs are written in the heredoc form (`name<<delimiter`, value, delimiter); the last one wins.
 output_value() {
-  grep "^$1=" "$GITHUB_OUTPUT" | tail -n 1 | cut -d= -f2-
+  awk -v name="$1" '
+    index($0, name "<<") == 1 { getline; value = $0; found = 1; next }
+    END { if (found) print value }
+  ' "$GITHUB_OUTPUT"
 }
 
 teardown_scratch() {

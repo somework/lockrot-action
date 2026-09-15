@@ -83,6 +83,41 @@ teardown() { teardown_scratch; }
   [ "$(cat "$SCRATCH/r")" = "::warning file=a&b/c/composer.lock,line=1::m" ]
 }
 
+@test "set_output uses the heredoc form so a value cannot smuggle a second output" {
+  export GITHUB_OUTPUT="$SCRATCH/out"
+  : > "$GITHUB_OUTPUT"
+  set_output report "a=b
+exit-code=0"
+  set_output exit-code 1
+  [ "$(grep -c '^exit-code<<' "$GITHUB_OUTPUT")" -eq 1 ]
+  [ "$(grep -c '^report<<' "$GITHUB_OUTPUT")" -eq 1 ]
+  ! grep -q '^exit-code=0' "$GITHUB_OUTPUT"
+  delimiter=$(sed -n 's/^exit-code<<//p' "$GITHUB_OUTPUT")
+  [ "$(sed -n "/^exit-code<<$delimiter\$/{n;p;}" "$GITHUB_OUTPUT")" = "1" ]
+}
+
+@test "reject_line_breaks refuses an input with a newline or a carriage return" {
+  export INPUT_A='fine' INPUT_B="two
+lines"
+  reject_line_breaks INPUT_A
+  run reject_line_breaks INPUT_A INPUT_B
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"the B input must not contain a line break"* ]]
+  export INPUT_C="$(printf 'cr\rhere')"
+  run reject_line_breaks INPUT_C
+  [ "$status" -eq 1 ]
+}
+
+@test "reject_absolute_path refuses absolute and drive-letter paths" {
+  reject_absolute_path working-directory apps/api
+  reject_absolute_path working-directory ./apps
+  run reject_absolute_path working-directory /tmp/x
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"must be relative to the workspace"* ]]
+  run reject_absolute_path working-directory 'D:/a/x'
+  [ "$status" -eq 1 ]
+}
+
 @test "report_extension maps formats to file extensions" {
   [ "$(report_extension json)" = json ]
   [ "$(report_extension gitlab)" = json ]
