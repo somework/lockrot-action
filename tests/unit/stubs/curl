@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # curl stand-in for the unit tests: serves release assets from $CURL_STUB_ROOT/<version>/<name>
 # and answers the latest-release redirect probe with $CURL_STUB_REDIRECT.
-dest= fmt= url=
+dest='' fmt='' url=''
 while [ $# -gt 0 ]; do
   case $1 in
     -o) dest=$2; shift ;;

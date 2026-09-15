@@ -45,8 +45,8 @@ RUN set -eux; \
 
 # --- stage 3: one layer, no build history ---------------------------------------------------------
 # Copying the pruned tree into an empty image is what makes the removals above count: a layer on
-# top of the base would only hide the files, and every pull would still fetch them. 16 MB against
-# the base image's 44 MB.
+# top of the base would only hide the files, and every pull would still fetch them. 44 MB on disk
+# and 16 MB to pull, against the base image's 106 MB and 44 MB.
 FROM scratch
 ARG LOCKROT_VERSION
 COPY --from=runtime / /

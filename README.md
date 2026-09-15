@@ -18,7 +18,7 @@ summary, SARIF for the Security tab, and an exit code you choose.
     fail-on: silent
 ```
 
-One step, nothing to install. Also ships a 16 MB signed [Docker image](#docker-image) for GitLab CI,
+One step, nothing to install. Also ships a signed 16 MB [Docker image](#docker-image) for GitLab CI,
 other CI systems and local runs.
 
 ## Contents
@@ -220,7 +220,9 @@ A development package is reported the same way, one priority step lower.
   template expansion inside `run:` blocks.
 - **Pinned dependencies.** The two actions this one uses — `actions/cache` and
   `shivammathur/setup-php` — are pinned by commit SHA, as is everything in this repository's own
-  workflows. Dependabot proposes updates after a seven-day cooldown.
+  workflows. Dependabot proposes updates after a seven-day cooldown. setup-php is called without a
+  token, so it never writes the workflow token into Composer's global `auth.json` for later steps
+  to pick up.
 - **Network.** `github.com` release assets, the Composer repositories configured in the project
   (`repo.packagist.org` by default) and `api.github.com`. Nothing else is contacted.
 - **Checked on every change**: [zizmor](https://docs.zizmor.sh/), actionlint, shellcheck, hadolint,
@@ -246,9 +248,10 @@ pins is in its `lockrot.env`, and the `version` input picks another release at a
 
 ## Docker image
 
-`ghcr.io/somework/lockrot` — the same verified `lockrot.phar` on the official PHP 8.4 CLI image,
-pruned to 16 MB and flattened to one layer, running as a non-root user, for `linux/amd64` and
-`linux/arm64`. Tags follow the lockrot version: `0.2.1`, `0.2` and `latest`.
+`ghcr.io/somework/lockrot` — the same verified `lockrot.phar` on the official PHP 8.4 CLI image
+with everything a CLI analysis never needs removed and the result flattened to one layer: 16 MB to
+pull, 44 MB on disk (the base image is 44 MB and 106 MB). Runs as a non-root user, built for
+`linux/amd64` and `linux/arm64`. Tags follow the lockrot version: `0.2.1`, `0.2` and `latest`.
 
 ```bash
 docker run --rm -v "$PWD:/app:ro" ghcr.io/somework/lockrot:0.2 --target-php=8.4 --fail-on=silent

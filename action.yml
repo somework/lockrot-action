@@ -117,6 +117,11 @@ runs:
       with:
         php-version: ${{ inputs.php-version || 'latest' }}
         coverage: none
+        # setup-php writes the token it is given into Composer's global auth.json as github-oauth,
+        # which would hand the workflow token to every later step and make lockrot send two
+        # Authorization headers (Composer's and its own) to api.github.com. lockrot gets its token
+        # through the github-token input instead.
+        github-token: ''
 
     - id: restore
       name: Restore metadata cache
