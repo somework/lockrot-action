@@ -1,0 +1,168 @@
+name: lockrot
+description: >-
+  Finds abandoned, unmaintained and branch-pinned packages in composer.lock. Pull-request
+  annotations, SARIF, a job summary and CI exit codes, from the verified lockrot release.
+author: Igor Pinchuk
+branding:
+  icon: clock
+  color: orange
+
+inputs:
+  version:
+    description: >-
+      lockrot release to run. Empty runs the release this action pins in lockrot.env and verifies
+      it against the sha256 pinned there; "latest" or a version such as 0.2.1 downloads that
+      release and verifies it against the lockrot.phar.sha256 published beside it.
+    required: false
+    default: ''
+  checksum:
+    description: sha256 the downloaded lockrot.phar must have. Overrides the pinned or published one.
+    required: false
+    default: ''
+  working-directory:
+    description: Directory that holds composer.json and composer.lock, relative to the workspace.
+    required: false
+    default: '.'
+  fail-on:
+    description: >-
+      Verdict that fails the step (exit 1): none, stale, old-promise, pinned, silent or abandoned.
+      Empty leaves it to extra.lockrot.fail-on in composer.json, which defaults to none.
+    required: false
+    default: ''
+  target-php:
+    description: PHP version the project targets for the old-promise check, e.g. 8.4. Empty uses config.platform.php or the running PHP.
+    required: false
+    default: ''
+  format:
+    description: 'Report format: github (annotations), table, json, sarif, gitlab or markdown.'
+    required: false
+    default: github
+  output:
+    description: Where to write the report, relative to the workspace. Empty keeps it under RUNNER_TEMP; the path is the report output either way.
+    required: false
+    default: ''
+  dev:
+    description: Also check packages-dev (--dev).
+    required: false
+    default: 'false'
+  all:
+    description: Report every checked package, not only flagged ones (--all).
+    required: false
+    default: 'false'
+  strict-network:
+    description: Exit 1 when a Composer repository or GitHub could not be reached (--strict-network).
+    required: false
+    default: 'false'
+  baseline:
+    description: Baseline file to read, relative to composer.json (--baseline). Empty uses extra.lockrot.baseline or lockrot-baseline.json.
+    required: false
+    default: ''
+  generate-baseline:
+    description: Write this run's findings to the baseline file and exit 0 (--generate-baseline).
+    required: false
+    default: 'false'
+  args:
+    description: Extra command-line options passed to lockrot as given, split on whitespace.
+    required: false
+    default: ''
+  github-token:
+    description: Token lockrot uses for GitHub repository-activity checks. Without one the checks are capped at 50 packages per run.
+    required: false
+    default: ${{ github.token }}
+  php-version:
+    description: >-
+      PHP to install with shivammathur/setup-php before running. Empty uses the runner's PHP when
+      it is 7.4 or newer and installs the latest stable PHP otherwise (macOS runners ship none).
+    required: false
+    default: ''
+  cache:
+    description: Cache Composer repository metadata and lockrot's GitHub responses between runs.
+    required: false
+    default: 'true'
+  summary:
+    description: Add the report, rendered as markdown, to the job summary.
+    required: false
+    default: 'true'
+
+outputs:
+  exit-code:
+    description: 'lockrot exit code: 0 clean or below fail-on, 1 fail-on reached, 2 tool or configuration error.'
+    value: ${{ steps.run.outputs.exit-code }}
+  report:
+    description: Path of the report file in the requested format.
+    value: ${{ steps.run.outputs.report }}
+  version:
+    description: The lockrot version that ran.
+    value: ${{ steps.setup.outputs.version }}
+  cache-hit:
+    description: Whether the metadata cache was restored from the exact key.
+    value: ${{ steps.restore.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - id: setup
+      name: Download and verify lockrot
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_CHECKSUM: ${{ inputs.checksum }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_PHP_VERSION: ${{ inputs.php-version }}
+      run: bash "${GITHUB_ACTION_PATH//\\//}/src/setup.sh"
+
+    - name: Install PHP
+      if: steps.setup.outputs.php-needed == 'true'
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      with:
+        php-version: ${{ inputs.php-version || 'latest' }}
+        coverage: none
+
+    - id: restore
+      name: Restore metadata cache
+      if: inputs.cache == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.setup.outputs.cache-dir }}
+        key: lockrot-${{ runner.os }}-${{ steps.setup.outputs.lock-hash }}-${{ steps.setup.outputs.cache-date }}
+        restore-keys: |
+          lockrot-${{ runner.os }}-${{ steps.setup.outputs.lock-hash }}-
+          lockrot-${{ runner.os }}-
+
+    - id: run
+      name: Run lockrot
+      shell: bash
+      env:
+        LOCKROT_PHAR: ${{ steps.setup.outputs.phar }}
+        LOCKROT_VERSION: ${{ steps.setup.outputs.version }}
+        LOCKROT_CACHE_DIR: ${{ steps.setup.outputs.cache-dir }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_TARGET_PHP: ${{ inputs.target-php }}
+        INPUT_DEV: ${{ inputs.dev }}
+        INPUT_ALL: ${{ inputs.all }}
+        INPUT_STRICT_NETWORK: ${{ inputs.strict-network }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_GENERATE_BASELINE: ${{ inputs.generate-baseline }}
+        INPUT_ARGS: ${{ inputs.args }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_SUMMARY: ${{ inputs.summary }}
+      run: bash "${GITHUB_ACTION_PATH//\\//}/src/run.sh"
+
+    - name: Save metadata cache
+      if: inputs.cache == 'true' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.setup.outputs.cache-dir }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}
+
+    - name: Apply lockrot's exit code
+      shell: bash
+      env:
+        LOCKROT_EXIT_CODE: ${{ steps.run.outputs.exit-code }}
+      run: |
+        if [ "$LOCKROT_EXIT_CODE" != "0" ]; then
+          exit "$LOCKROT_EXIT_CODE"
+        fi

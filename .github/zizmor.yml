@@ -1,0 +1,13 @@
+rules:
+  # `uses: ./` is deliberate: CI must exercise the checked-out working tree of this very action,
+  # which is what the workspace-relative form does. The `$/` form (GitHub, July 2026) resolves
+  # against the repository, not the checkout under test.
+  self-repository:
+    ignore:
+      - ci.yml
+      - update-lockrot.yml
+  # peter-evans/create-pull-request signs the commit, manages the branch and updates an existing
+  # pull request in place; `gh pr create` does none of that.
+  superfluous-actions:
+    ignore:
+      - update-lockrot.yml

@@ -1,0 +1,245 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Nothing by default; each job asks for what it reads.
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: shellcheck -x src/*.sh tests/unit/stubs/* tests/unit/helpers.bash
+      - name: actionlint
+        env:
+          VERSION: 1.7.12
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl -fsSL --retry 3 -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz"
+          echo "${SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color
+      - name: hadolint
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: Dockerfile
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false
+          persona: pedantic
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: bats-core/bats-action@77d6fb60505b4d0d1d73e48bd035b55074bbfb43 # 4.0.0
+        with:
+          support-install: false
+          assert-install: false
+          detik-install: false
+          file-install: false
+      - run: bats --print-output-on-failure tests/unit
+
+  e2e:
+    name: End to end (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read # checkout; the action itself only reads the workspace
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pinned release, clean threshold
+        id: clean
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          fail-on: none
+      - name: Check outputs
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.clean.outputs.exit-code }}
+          REPORT: ${{ steps.clean.outputs.report }}
+          VERSION: ${{ steps.clean.outputs.version }}
+        run: |
+          set -eux
+          [ "$EXIT_CODE" = "0" ]
+          [ -s "$REPORT" ]
+          grep -q '^::warning file=tests/fixtures/project/composer.lock,' "$REPORT"
+          [ "$VERSION" = "$(grep '^LOCKROT_VERSION=' lockrot.env | cut -d= -f2)" ]
+
+      - name: Threshold reached fails the step
+        id: failing
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          fail-on: silent
+      - name: Check the failure
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.failing.outcome }}
+          EXIT_CODE: ${{ steps.failing.outputs.exit-code }}
+        run: |
+          set -eux
+          [ "$OUTCOME" = "failure" ]
+          [ "$EXIT_CODE" = "1" ]
+
+      - name: SARIF to a file
+        id: sarif
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          format: sarif
+          output: build/lockrot.sarif
+      - name: Check the SARIF
+        shell: bash
+        env:
+          REPORT: ${{ steps.sarif.outputs.report }}
+        run: |
+          set -eux
+          [ -s build/lockrot.sarif ]
+          jq -e '.version == "2.1.0" and (.runs[0].results | length) >= 1' build/lockrot.sarif
+          jq -e '.runs[0].results[0].ruleId == "silent"' build/lockrot.sarif
+
+      - name: Baseline accepts today's findings
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          generate-baseline: 'true'
+      - name: Baseline makes the threshold pass
+        id: baselined
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          fail-on: silent
+          format: markdown
+      - name: Check the baseline run
+        shell: bash
+        env:
+          REPORT: ${{ steps.baselined.outputs.report }}
+        run: |
+          set -eux
+          [ -s tests/fixtures/project/lockrot-baseline.json ]
+          grep -q '1 known' "$REPORT"
+
+      - name: Explicit older release
+        id: explicit
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          version: v0.2.0
+          format: json
+          summary: 'false'
+      - name: Latest release
+        id: latest
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          version: latest
+          format: json
+          cache: 'false'
+      - name: Check the versions
+        shell: bash
+        env:
+          EXPLICIT: ${{ steps.explicit.outputs.version }}
+          LATEST: ${{ steps.latest.outputs.version }}
+          REPORT: ${{ steps.latest.outputs.report }}
+        run: |
+          set -eux
+          [ "$EXPLICIT" = "0.2.0" ]
+          [[ "$LATEST" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]
+          jq -e '.findings | length >= 1' "$REPORT"
+
+      - name: A wrong checksum refuses to run
+        id: badsum
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          checksum: '0000000000000000000000000000000000000000000000000000000000000000'
+      - name: Check the refusal
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.badsum.outcome }}
+        run: |
+          [ "$OUTCOME" = "failure" ]
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the pinned release
+        run: grep -E '^LOCKROT_(VERSION|SHA256)=' lockrot.env >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: lockrot:ci
+          build-args: |
+            LOCKROT_VERSION=${{ env.LOCKROT_VERSION }}
+            LOCKROT_SHA256=${{ env.LOCKROT_SHA256 }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test
+        run: |
+          set -eux
+          docker run --rm lockrot:ci --version | grep -Fx "lockrot ${LOCKROT_VERSION}"
+          docker run --rm -v "$PWD/tests/fixtures/project:/app:ro" lockrot:ci --target-php=8.4 --format=json --fail-on=none > report.json
+          jq -e '.findings | length >= 1' report.json
+          # any uid must work: COMPOSER_HOME lives under /tmp
+          code=0
+          docker run --rm --user 12345:12345 -v "$PWD/tests/fixtures/project:/app:ro" lockrot:ci --target-php=8.4 --format=table --fail-on=silent || code=$?
+          [ "$code" -eq 1 ]
+          size=$(docker image inspect lockrot:ci --format '{{.Size}}')
+          echo "image size: $size bytes"
+          [ "$size" -lt 25000000 ]
+      - name: Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        with:
+          image-ref: lockrot:ci
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH

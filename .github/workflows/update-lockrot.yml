@@ -1,0 +1,84 @@
+name: Update lockrot
+
+# Checks GitHub for a newer lockrot release, verifies its lockrot.phar against the published
+# sha256, runs this action once with it, and opens a pull request that bumps lockrot.env.
+# With the default GITHUB_TOKEN that pull request does not trigger CI on its own (GitHub's rule
+# for token-created events); set the UPDATE_TOKEN secret to a fine-grained token with contents
+# and pull-requests write access to have CI run on the PR as usual.
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+# Nothing by default; the one job asks to push a branch and open the pull request.
+permissions: {}
+
+concurrency:
+  group: update-lockrot
+
+jobs:
+  check:
+    name: Check for a new release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the chore/lockrot-* branch
+      pull-requests: write # open the pull request
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare with the pinned release
+        id: latest
+        run: |
+          set -eu
+          pinned=$(grep '^LOCKROT_VERSION=' lockrot.env | cut -d= -f2)
+          redirect=$(curl -fsS --retry 3 -o /dev/null -w '%{redirect_url}' \
+            https://github.com/somework/lockrot/releases/latest/download/lockrot.phar)
+          case "$redirect" in
+            */releases/download/v*/lockrot.phar) ;;
+            *) echo "::error::unexpected redirect: $redirect"; exit 1 ;;
+          esac
+          latest=${redirect%/lockrot.phar}
+          latest=${latest##*/download/v}
+          echo "pinned=$pinned latest=$latest"
+          if [ "$latest" = "$pinned" ]; then
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          curl -fsSL --retry 3 -o lockrot.phar "https://github.com/somework/lockrot/releases/download/v${latest}/lockrot.phar"
+          curl -fsSL --retry 3 -o lockrot.phar.sha256 "https://github.com/somework/lockrot/releases/download/v${latest}/lockrot.phar.sha256"
+          sha256sum -c lockrot.phar.sha256
+          hash=$(cut -c1-64 lockrot.phar.sha256)
+          rm -f lockrot.phar lockrot.phar.sha256
+          sed -i -e "s/^LOCKROT_VERSION=.*/LOCKROT_VERSION=${latest}/" -e "s/^LOCKROT_SHA256=.*/LOCKROT_SHA256=${hash}/" lockrot.env
+          git diff --stat
+          {
+            echo "update=true"
+            echo "version=$latest"
+            echo "sha256=$hash"
+          } >> "$GITHUB_OUTPUT"
+      - name: Run the action with the new release
+        if: steps.latest.outputs.update == 'true'
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          fail-on: none
+      - name: Open a pull request
+        if: steps.latest.outputs.update == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.UPDATE_TOKEN || github.token }}
+          branch: chore/lockrot-${{ steps.latest.outputs.version }}
+          delete-branch: true
+          sign-commits: true
+          commit-message: 'chore: lockrot ${{ steps.latest.outputs.version }}'
+          title: 'chore: lockrot ${{ steps.latest.outputs.version }}'
+          labels: dependencies
+          body: |
+            Pins lockrot ${{ steps.latest.outputs.version }} (`${{ steps.latest.outputs.sha256 }}`), verified against the published `lockrot.phar.sha256` and run once against the fixture project by this workflow.
+
+            Release notes: https://github.com/somework/lockrot/releases/tag/v${{ steps.latest.outputs.version }}
+
+            After merging, publish a release of this action so `v1` and the Docker image pick it up.

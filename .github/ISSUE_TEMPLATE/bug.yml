@@ -1,0 +1,32 @@
+name: Bug report
+description: The action or the image does not behave as documented.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Action version or image tag
+      placeholder: somework/lockrot-action@v1.0.0 / ghcr.io/somework/lockrot:0.2.1
+    validations:
+      required: true
+  - type: input
+    id: runner
+    attributes:
+      label: Runner
+      placeholder: ubuntu-latest / windows-latest / self-hosted Linux / GitLab docker executor
+    validations:
+      required: true
+  - type: textarea
+    id: step
+    attributes:
+      label: The step as written in the workflow
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: What happened
+      description: The relevant part of the log, the annotations or the summary, and what you expected instead.
+    validations:
+      required: true

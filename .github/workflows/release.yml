@@ -1,0 +1,46 @@
+name: Release
+
+# Moves the floating major tag (v1) to every published release so `uses: somework/lockrot-action@v1`
+# follows the newest v1.x.y. Pre-releases are left alone.
+
+on:
+  release:
+    types: [published]
+
+# Nothing by default; the one job asks to push the tag.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+
+jobs:
+  floating-tag:
+    name: Move the major tag
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # move the floating tag
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - name: Point the major tag at this release
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::release tag '$TAG' is not vMAJOR.MINOR.PATCH"; exit 1 ;;
+          esac
+          major=${TAG%%.*}
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa "$major" -m "Update $major to $TAG"
+          # The same header actions/checkout uses; the token never appears on a command line.
+          auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" \
+            push --force origin "refs/tags/$major"
+          echo "$major now points at $TAG ($(git rev-parse --short HEAD))" >> "$GITHUB_STEP_SUMMARY"

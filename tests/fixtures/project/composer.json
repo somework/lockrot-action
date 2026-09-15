@@ -1,0 +1,17 @@
+{
+    "name": "lockrot/action-fixture",
+    "description": "Fixture project for the lockrot-action end-to-end tests",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=7.4",
+        "nikic/php-parser": "^5.0",
+        "phpunit/php-token-stream": "^4.0",
+        "psr/log": "^3.0"
+    },
+    "config": {
+        "platform": {
+            "php": "8.1.0"
+        }
+    }
+}

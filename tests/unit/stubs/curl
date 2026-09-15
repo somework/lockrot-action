@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# curl stand-in for the unit tests: serves release assets from $CURL_STUB_ROOT/<version>/<name>
+# and answers the latest-release redirect probe with $CURL_STUB_REDIRECT.
+dest= fmt= url=
+while [ $# -gt 0 ]; do
+  case $1 in
+    -o) dest=$2; shift ;;
+    -w) fmt=$2; shift ;;
+    --retry|--retry-delay|--connect-timeout|--max-time) shift ;;
+    http://*|https://*) url=$1 ;;
+  esac
+  shift
+done
+printf '%s\n' "$url" >> "${CURL_STUB_LOG:-/dev/null}"
+if [ -n "$fmt" ]; then
+  printf '%s' "${CURL_STUB_REDIRECT:-https://github.com/somework/lockrot/releases/download/v9.9.9/lockrot.phar}"
+  exit "${CURL_STUB_REDIRECT_EXIT:-0}"
+fi
+name=${url##*/}
+version=${url%/*}
+version=${version##*/v}
+source="${CURL_STUB_ROOT:?}/${version}/${name}"
+[ -f "$source" ] || exit 22
+cp "$source" "$dest"

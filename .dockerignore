@@ -1,0 +1,2 @@
+# The Dockerfile fetches everything it needs over the network; no build context is required.
+*

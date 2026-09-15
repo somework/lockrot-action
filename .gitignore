@@ -1,0 +1,4 @@
+/build/
+/.superpowers/
+/.private/
+/tests/fixtures/project/lockrot-baseline.json
