@@ -10,7 +10,7 @@
 # (.github/dependabot.yml). The three lines must name the same image.
 
 # --- stage 1: fetch and verify the archive ------------------------------------------------------
-FROM php:8.4-cli-alpine@sha256:2f389f933c3cc58cc622bd243bb4ecff7e6553e2de4387a239bca640c988be19 AS download
+FROM php:8.5-cli-alpine@sha256:aa66ee4275e0472bafcd18e35142499fcbda6ac90e641e751418e052e6a0d812 AS download
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ARG LOCKROT_VERSION
 ARG LOCKROT_SHA256
@@ -29,7 +29,7 @@ RUN set -eu; \
 # links against (ca-certificates included, for HTTPS). Removed: the PHP source tarball, headers,
 # PEAR, php-cgi and phpdbg, the extension build helpers, and the curl/tar/xz/openssl command-line
 # tools the base image carries for building extensions.
-FROM php:8.4-cli-alpine@sha256:2f389f933c3cc58cc622bd243bb4ecff7e6553e2de4387a239bca640c988be19 AS runtime
+FROM php:8.5-cli-alpine@sha256:aa66ee4275e0472bafcd18e35142499fcbda6ac90e641e751418e052e6a0d812 AS runtime
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 RUN set -eux; \
     apk del --no-network curl tar xz openssl; \
