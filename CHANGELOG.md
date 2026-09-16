@@ -6,6 +6,13 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-16
+
+### Changed
+
+- Action description shortened to the Marketplace limit; README notes that verifying the image signature needs cosign 3.0 or newer.
+- Runs lockrot 0.2.2.
+
 ## [1.0.0] - 2026-09-16
 
 Runs lockrot 0.2.2.
@@ -20,5 +27,6 @@ Runs lockrot 0.2.2.
   cosign-signed with a build-provenance attestation and an SBOM.
 - Daily check for a new lockrot release that opens a pull request bumping `lockrot.env`.
 
-[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/somework/lockrot-action/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/somework/lockrot-action/releases/tag/v1.0.0
