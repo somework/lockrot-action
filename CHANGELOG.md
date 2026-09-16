@@ -6,6 +6,16 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-16
+
+### Changed
+
+- Runs lockrot 0.4.0 — repository activity from GitLab and Bitbucket next to GitHub, `fail-on` by
+  priority, and a footer that says how old cached activity data is; see the
+  [lockrot release notes](https://github.com/somework/lockrot/releases/tag/v0.4.0).
+- `fail-on` documents the priority values (`low`, `medium`, `high`, `critical`) lockrot 0.4.0 accepts
+  next to the verdicts.
+
 ## [1.0.2] - 2026-09-16
 
 ### Changed
@@ -36,7 +46,8 @@ Runs lockrot 0.2.2.
   cosign-signed with a build-provenance attestation and an SBOM.
 - Daily check for a new lockrot release that opens a pull request bumping `lockrot.env`.
 
-[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/somework/lockrot-action/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/somework/lockrot-action/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/somework/lockrot-action/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/somework/lockrot-action/releases/tag/v1.0.0
