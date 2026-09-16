@@ -15,15 +15,14 @@ FROM php:8.4-cli-alpine@sha256:2f389f933c3cc58cc622bd243bb4ecff7e6553e2de4387a23
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ARG LOCKROT_VERSION
 ARG LOCKROT_SHA256
-RUN set -eu; \
-    if [ -z "${LOCKROT_VERSION}" ] || [ -z "${LOCKROT_SHA256}" ]; then \
+RUN if [ -z "${LOCKROT_VERSION}" ] || [ -z "${LOCKROT_SHA256}" ]; then \
         echo 'build with --build-arg LOCKROT_VERSION=<version> --build-arg LOCKROT_SHA256=<hex>, both from lockrot.env' >&2; \
         exit 1; \
-    fi; \
-    wget -q -O /lockrot "https://github.com/somework/lockrot/releases/download/v${LOCKROT_VERSION}/lockrot.phar"; \
-    echo "${LOCKROT_SHA256}  /lockrot" | sha256sum -c -; \
-    chmod 0555 /lockrot; \
-    php /lockrot --version | grep -Fx "lockrot ${LOCKROT_VERSION}"
+    fi
+# BuildKit refuses the download itself when the digest does not match, before anything runs.
+ADD --checksum=sha256:${LOCKROT_SHA256} --chmod=0555 \
+    https://github.com/somework/lockrot/releases/download/v${LOCKROT_VERSION}/lockrot.phar /lockrot
+RUN php /lockrot --version | grep -Fx "lockrot ${LOCKROT_VERSION}"
 
 # --- stage 2: prune the runtime -------------------------------------------------------------------
 # Kept: the php binary, its shared extensions, the ini directory, busybox and the libraries PHP
