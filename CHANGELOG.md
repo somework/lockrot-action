@@ -6,6 +6,10 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The image build fetches `lockrot.phar` with `ADD --checksum`, so BuildKit refuses a digest mismatch before anything runs; the main branch is protected by a ruleset requiring the CI checks.
+
 ## [1.0.1] - 2026-09-16
 
 ### Changed
