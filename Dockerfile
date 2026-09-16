@@ -4,7 +4,7 @@
 # official PHP CLI image with everything a CLI-only analysis never needs removed and the result
 # flattened into a single layer. Build arguments come from lockrot.env:
 #
-#   docker build --build-arg LOCKROT_VERSION=0.2.1 --build-arg LOCKROT_SHA256=<hex> -t lockrot .
+#   docker build --build-arg LOCKROT_VERSION=0.2.2 --build-arg LOCKROT_SHA256=<hex> -t lockrot .
 #
 # The base is pinned by digest on both FROM lines that use it; Dependabot proposes digest updates
 # (.github/dependabot.yml) and rewrites both. The `org.opencontainers.image.base.name` label at

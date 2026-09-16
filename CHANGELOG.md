@@ -8,7 +8,7 @@ All notable changes to this action are documented here. The format follows
 
 ## [1.0.0] - 2026-09-16
 
-Runs lockrot 0.2.1.
+Runs lockrot 0.2.2.
 
 ### Added
 

@@ -65,7 +65,7 @@ other CI systems and local runs.
 | `generate-baseline` | `false` | Write this run's findings to the baseline and exit 0 (`--generate-baseline`) |
 | `strict-network` | `false` | Exit 1 when a Composer repository or GitHub could not be reached |
 | `args` | | Extra lockrot options, split on whitespace. A misspelt option fails the step with exit 1 |
-| `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.1` |
+| `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.2` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
 | `github-token` | `${{ github.token }}` | Token for GitHub repository-activity checks. Without one, checks are capped at 50 packages |
 | `php-version` | | PHP to install with setup-php before running. Empty uses the runner's PHP when it is 7.4+ |
@@ -264,7 +264,7 @@ pins is in its `lockrot.env`, and the `version` input picks another release at a
 `ghcr.io/somework/lockrot` — the same verified `lockrot.phar` on the official PHP 8.4 CLI image
 with everything a CLI analysis never needs removed and the result flattened to one layer: 16 MB to
 pull, 44 MB on disk (the base image is 44 MB and 106 MB). Runs as a non-root user, built for
-`linux/amd64` and `linux/arm64`. Tags follow the lockrot version: `0.2.1`, `0.2` and `latest`.
+`linux/amd64` and `linux/arm64`. Tags follow the lockrot version: `0.2.2`, `0.2` and `latest`.
 
 ```bash
 docker run --rm -v "$PWD:/app:ro" ghcr.io/somework/lockrot:0.2 --target-php=8.4 --fail-on=silent
@@ -300,10 +300,10 @@ Every published image is signed with [cosign](https://docs.sigstore.dev/) throug
 identity and carries a build-provenance attestation and an SBOM:
 
 ```bash
-cosign verify ghcr.io/somework/lockrot:0.2.1 \
+cosign verify ghcr.io/somework/lockrot:0.2.2 \
   --certificate-identity-regexp '^https://github\.com/somework/lockrot-action/\.github/workflows/docker\.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-gh attestation verify oci://ghcr.io/somework/lockrot:0.2.1 --owner somework
+gh attestation verify oci://ghcr.io/somework/lockrot:0.2.2 --owner somework
 ```
 
 Base-image fixes arrive as Dependabot digest bumps to the Dockerfile; the image is rebuilt on every

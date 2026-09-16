@@ -11,7 +11,7 @@ inputs:
   version:
     description: >-
       lockrot release to run. Empty runs the release this action pins in lockrot.env and verifies
-      it against the sha256 pinned there; "latest" or a version such as 0.2.1 downloads that
+      it against the sha256 pinned there; "latest" or a version such as 0.2.2 downloads that
       release and verifies it against the lockrot.phar.sha256 published beside it.
     required: false
     default: ''
