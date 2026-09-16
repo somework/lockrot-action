@@ -23,8 +23,9 @@ inputs:
     default: '.'
   fail-on:
     description: >-
-      Verdict that fails the step (exit 1): none, stale, old-promise, pinned, silent or abandoned.
-      Empty leaves it to extra.lockrot.fail-on in composer.json, which defaults to none.
+      Verdict or priority that fails the step (exit 1): none, stale, old-promise, pinned, silent,
+      abandoned, or low, medium, high, critical. Empty leaves it to extra.lockrot.fail-on in
+      composer.json, which defaults to none.
     required: false
     default: ''
   target-php:
