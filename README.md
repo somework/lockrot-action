@@ -297,7 +297,8 @@ lockrot:
 ```
 
 Every published image is signed with [cosign](https://docs.sigstore.dev/) through GitHub's OIDC
-identity and carries a build-provenance attestation and an SBOM:
+identity and carries a build-provenance attestation and an SBOM. The signature is stored in the
+Sigstore bundle format, which needs cosign 3.0 or newer to verify:
 
 ```bash
 cosign verify ghcr.io/somework/lockrot:0.2.2 \

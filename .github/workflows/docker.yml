@@ -149,7 +149,7 @@ jobs:
             echo "${IMAGE}@${DIGEST}"
             echo '```'
             echo
-            echo 'Verify:'
+            echo 'Verify (cosign 3.0 or newer):'
             echo '```bash'
             echo "cosign verify ${IMAGE}@${DIGEST} \\"
             echo "  --certificate-identity-regexp '^https://github\\.com/somework/lockrot-action/\\.github/workflows/docker\\.yml@' \\"
