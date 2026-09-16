@@ -1,7 +1,5 @@
 name: lockrot
-description: >-
-  Finds abandoned, unmaintained and branch-pinned packages in composer.lock. Pull-request
-  annotations, SARIF, a job summary and CI exit codes, from the verified lockrot release.
+description: 'Finds abandoned, unmaintained and branch-pinned packages in composer.lock: PR annotations, SARIF, job summary, exit codes.'
 author: Igor Pinchuk
 branding:
   icon: clock
