@@ -6,6 +6,15 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-09-18
+
+### Changed
+
+- Runs lockrot 0.6.1, which restores `phive install somework/lockrot` (the self-update signature
+  asset is `lockrot.phar.sig.json` now, so PHIVE no longer mistakes it for a GPG signature). The
+  action pins the PHAR by sha256 in `lockrot.env` and never used PHIVE; nothing changes in how it
+  runs.
+
 ## [1.0.6] - 2026-09-18
 
 ### Changed
@@ -68,7 +77,8 @@ Runs lockrot 0.2.2.
   cosign-signed with a build-provenance attestation and an SBOM.
 - Daily check for a new lockrot release that opens a pull request bumping `lockrot.env`.
 
-[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.7...HEAD
+[1.0.7]: https://github.com/somework/lockrot-action/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/somework/lockrot-action/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/somework/lockrot-action/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/somework/lockrot-action/compare/v1.0.3...v1.0.4
