@@ -6,6 +6,14 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-09-18
+
+### Changed
+
+- Runs lockrot 0.6.0 — a reproducibly built PHAR (rebuild the tag and compare the sha256) whose
+  `self-update` now verifies each release's signature with a key built into the archive. The
+  action still pins the PHAR by sha256 in `lockrot.env`; nothing changes in how it runs.
+
 ## [1.0.5] - 2026-09-17
 
 ### Changed
@@ -60,7 +68,8 @@ Runs lockrot 0.2.2.
   cosign-signed with a build-provenance attestation and an SBOM.
 - Daily check for a new lockrot release that opens a pull request bumping `lockrot.env`.
 
-[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.6...HEAD
+[1.0.6]: https://github.com/somework/lockrot-action/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/somework/lockrot-action/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/somework/lockrot-action/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/somework/lockrot-action/compare/v1.0.2...v1.0.3
