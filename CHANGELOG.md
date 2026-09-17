@@ -6,6 +6,15 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-09-17
+
+### Changed
+
+- Runs lockrot 0.5.0 — the first GPG-signed and GitHub-attested PHAR release, and phpstan/phpstan
+  is no longer reported `abandoned` (the repository asked about activity is the one the highest
+  stable release names, never an older release's). The action still pins the PHAR by sha256 in
+  `lockrot.env`; nothing changes in how it runs.
+
 ## [1.0.4] - 2026-09-16
 
 ### Changed
@@ -51,7 +60,8 @@ Runs lockrot 0.2.2.
   cosign-signed with a build-provenance attestation and an SBOM.
 - Daily check for a new lockrot release that opens a pull request bumping `lockrot.env`.
 
-[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/somework/lockrot-action/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/somework/lockrot-action/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/somework/lockrot-action/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/somework/lockrot-action/compare/v1.0.1...v1.0.2
