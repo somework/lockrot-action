@@ -6,6 +6,19 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-09-19
+
+### Changed
+
+- Runs lockrot 0.7.0, which adds the `left-behind` verdict (a quiet release branch under a
+  higher branch that keeps shipping) and carries security advisories on the finding, saying which
+  release fixes each or that no fix is expected. `fail-on` accepts `left-behind`; a package that
+  was `ok`, `stale` or `old-promise` can now be `left-behind` (base priority `high`), and an
+  advisory on an `abandoned`, `silent` or `left-behind` package lifts its priority one step, so a
+  workflow with `fail-on: high` or `fail-on: critical` can start failing on a lock that passed
+  before — see the [0.7.0 release notes](https://github.com/somework/lockrot/releases/tag/v0.7.0).
+  The action still pins the PHAR by sha256 in `lockrot.env`; nothing changes in how it runs.
+
 ## [1.0.7] - 2026-09-18
 
 ### Changed
@@ -77,7 +90,8 @@ Runs lockrot 0.2.2.
   cosign-signed with a build-provenance attestation and an SBOM.
 - Daily check for a new lockrot release that opens a pull request bumping `lockrot.env`.
 
-[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.7...HEAD
+[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.8...HEAD
+[1.0.8]: https://github.com/somework/lockrot-action/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/somework/lockrot-action/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/somework/lockrot-action/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/somework/lockrot-action/compare/v1.0.4...v1.0.5
