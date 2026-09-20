@@ -6,6 +6,26 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-09-21
+
+### Changed
+
+- Runs lockrot 0.9.0. Packages split out of a monorepo are measured again: since 0.8.0 a tag
+  sharing its commit with two others was read as undated, which killed a false `left-behind` but
+  also silenced a branch that really had stopped. The monorepo's own tag for the same version now
+  supplies the date, so a lock on `illuminate/contracts v5.8.36` reads `branch 5.x last released
+  2020-08-18 (6.1 years ago, dated by laravel/framework)` where 0.8.0 said nothing — a workflow
+  with `fail-on: left-behind` or `fail-on: high` can start failing on a Laravel, Symfony or CakePHP
+  lock that passed before. Laravel's late security tags on 6.x, 7.x and 8.x are recent enough that
+  those branches still read as current under the default thresholds.
+- The JSON the action uploads is a published document now: `--format=json` opens with a `$schema`
+  key naming [`report-1.json`](https://lockrot.dev/schema/report-1.json), so a later step can
+  validate it with any draft-04 validator, and an editor completes a baseline file as you write it.
+  Under one number a document only ever gains fields, and `lockrot.schema` stays `1`, so a step
+  that reads the report keeps working. S8 and S2 gain `dated_by`, naming the monorepo that dated
+  the branch. See the [0.9.0 release notes](https://github.com/somework/lockrot/releases/tag/v0.9.0).
+  The action still pins the PHAR by sha256 in `lockrot.env`; nothing changes in how it runs.
+
 ## [1.0.9] - 2026-09-20
 
 ### Changed
@@ -106,7 +126,8 @@ Runs lockrot 0.2.2.
   cosign-signed with a build-provenance attestation and an SBOM.
 - Daily check for a new lockrot release that opens a pull request bumping `lockrot.env`.
 
-[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.9...HEAD
+[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.10...HEAD
+[1.0.10]: https://github.com/somework/lockrot-action/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/somework/lockrot-action/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/somework/lockrot-action/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/somework/lockrot-action/compare/v1.0.6...v1.0.7
