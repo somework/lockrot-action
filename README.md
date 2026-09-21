@@ -56,7 +56,7 @@ other CI systems and local runs.
 |---|---|---|
 | `fail-on` | *(lockrot's own default: `none`)* | Verdict or priority that fails the step: `none`, `stale`, `old-promise`, `left-behind`, `pinned`, `silent`, `abandoned`, or `low`, `medium`, `high`, `critical` (a priority reads the package's place in the project, so `high` fails on an abandoned direct requirement and passes the same verdict in a transitive dev package). Empty defers to `extra.lockrot.fail-on` in `composer.json` |
 | `target-php` | *(`config.platform.php`, else the running PHP)* | PHP version the project targets, for the `old-promise` check. Set it explicitly |
-| `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab` or `markdown` |
+| `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html` |
 | `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it under `RUNNER_TEMP`; either way the path is the `report` output |
 | `working-directory` | `.` | Directory holding `composer.json` and `composer.lock` |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
@@ -137,6 +137,35 @@ steps:
 
 `if: always()` keeps the upload running when `fail-on` already failed the step. Findings then stay in
 code scanning and are tracked across runs.
+
+### The whole run as one artifact
+
+```yaml
+permissions:
+  contents: read
+
+steps:
+  - uses: actions/checkout@v7
+  - uses: somework/lockrot-action@v1
+    id: lockrot
+    with:
+      target-php: '8.4'
+      format: html
+      output: lockrot-report.html
+  - uses: actions/upload-artifact@v7
+    if: always()
+    with:
+      name: lockrot-report
+      path: lockrot-report.html
+```
+
+One file, opened from the downloaded artifact with no server and nothing fetched from anywhere: the
+report, the release branches behind every finding, the advisories and the baseline comparison, with
+the filters and the open package kept in the URL so a link points at what you were looking at. It is
+the format for the person who did not run it — a reviewer, or whoever picks the ticket up a week
+later. `if: always()` keeps the upload running when `fail-on` has already failed the step. `all:
+true` puts every checked package in the page at roughly 4 KB each; without it a 100-package lock
+lands around 250 KB. Needs lockrot 0.10.0 or newer.
 
 ### A pull-request comment
 

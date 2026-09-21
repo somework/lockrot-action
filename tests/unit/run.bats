@@ -88,6 +88,17 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [ "$(output_value report)" = "$GITHUB_WORKSPACE/build/lockrot.sarif" ]
 }
 
+@test "an html page goes to a file named .html and is not printed" {
+  export INPUT_FORMAT=html
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(main_call)" = "$LOCKROT_PHAR --format=html" ]
+  [[ "$output" != *"::warning file="* ]]
+  [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.html" ]
+  [[ "$output" == *"html report written to $RUNNER_TEMP/lockrot/report.html"* ]]
+  [ -s "$RUNNER_TEMP/lockrot/report.html" ]
+}
+
 @test "an absolute output path is kept" {
   export INPUT_FORMAT=json INPUT_OUTPUT="$SCRATCH/out/report.json"
   run_run

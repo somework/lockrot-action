@@ -123,6 +123,7 @@ lines"
   [ "$(report_extension gitlab)" = json ]
   [ "$(report_extension sarif)" = sarif ]
   [ "$(report_extension markdown)" = md ]
+  [ "$(report_extension html)" = html ]
   [ "$(report_extension github)" = txt ]
   [ "$(report_extension table)" = txt ]
 }
