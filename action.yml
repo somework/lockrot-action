@@ -33,7 +33,7 @@ inputs:
     required: false
     default: ''
   format:
-    description: 'Report format: github (annotations), table, json, sarif, gitlab or markdown.'
+    description: 'Report format: github (annotations), table, json, sarif, gitlab, markdown or html.'
     required: false
     default: github
   output:

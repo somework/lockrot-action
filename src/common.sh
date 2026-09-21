@@ -156,6 +156,7 @@ report_extension() {
     json|gitlab) printf 'json\n' ;;
     sarif) printf 'sarif\n' ;;
     markdown) printf 'md\n' ;;
+    html) printf 'html\n' ;;
     *) printf 'txt\n' ;;
   esac
 }

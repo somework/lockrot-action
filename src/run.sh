@@ -39,8 +39,8 @@ main() {
   [ -n "$work_dir" ] || work_dir=.
   format=$(trim "${INPUT_FORMAT:-github}")
   case "$format" in
-    table|json|github|sarif|gitlab|markdown) ;;
-    *) fail "format '${format}' is not one of table, json, github, sarif, gitlab, markdown" ;;
+    table|json|github|sarif|gitlab|markdown|html) ;;
+    *) fail "format '${format}' is not one of table, json, github, sarif, gitlab, markdown, html" ;;
   esac
 
   local reported
