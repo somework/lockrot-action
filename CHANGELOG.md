@@ -6,6 +6,39 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-09-22
+
+### Added
+
+- `format: html` — the whole run as one self-contained page, for uploading as an artifact. It
+  carries the report, the release branches behind every finding, the advisories and the baseline
+  comparison in a single file that opens from the downloaded artifact with no server and nothing
+  fetched from anywhere, and the filters and the open package live in the URL, so a link points at
+  what the sender was looking at. It is the format for the person who did not run it — a reviewer,
+  or whoever picks the ticket up a week later. The report file is named `.html`, so the artifact
+  opens as a page rather than as text. `all: true` puts every checked package in it at roughly 4 KB
+  each; without it a 100-package lock lands around 250 KB. See
+  [the recipe](README.md#the-whole-run-as-one-artifact).
+
+### Changed
+
+- Runs lockrot 0.10.0. **A repository URL no longer carries its credentials into a report.** A
+  private Composer source is routinely configured with a token in the URL — `https://gitlab-ci-token:$CI_JOB_TOKEN@…`
+  is how GitLab CI hands a job access to one, and Bitbucket app passwords take the same shape — and
+  Composer keeps it in the lock because it has to fetch with it. lockrot 0.8.0 and 0.9.0 printed
+  that value verbatim in `--explain`, so a workflow that passed `--explain` through `args` put a
+  working token wherever the report went: the step log, the job summary, the uploaded file. Every
+  repository URL lockrot prints now has its userinfo removed and its host kept. A run that never
+  asked for an explanation was not affected.
+- The report says what the run was told to do. `--format=json` now opens with a `run` block naming
+  the project — from its own `name` in composer.json, or `extra.lockrot.project` where that is not
+  the name to publish — along with the target PHP, the thresholds, the `fail-on`, the name of the
+  lock and the verdicts the run counted as findings. Until now a report named the target PHP in one
+  place only, inside an S5 signal, so a run where S5 never fired left no record of what it aimed at.
+  Every finding also carries `baseline`: `known`, `new` or `worsened`, with the verdict the baseline
+  accepted. Both are optional under the same schema number, so a step that reads the report keeps
+  working. See the [0.10.0 release notes](https://github.com/somework/lockrot/releases/tag/v0.10.0).
+
 ## [1.0.10] - 2026-09-21
 
 ### Changed
@@ -126,7 +159,8 @@ Runs lockrot 0.2.2.
   cosign-signed with a build-provenance attestation and an SBOM.
 - Daily check for a new lockrot release that opens a pull request bumping `lockrot.env`.
 
-[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.10...HEAD
+[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.11...HEAD
+[1.0.11]: https://github.com/somework/lockrot-action/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/somework/lockrot-action/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/somework/lockrot-action/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/somework/lockrot-action/compare/v1.0.7...v1.0.8
