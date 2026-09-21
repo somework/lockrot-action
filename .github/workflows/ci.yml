@@ -136,25 +136,26 @@ jobs:
           jq -e '.version == "2.1.0" and (.runs[0].results | length) >= 1' build/lockrot.sarif
           jq -e '.runs[0].results[0].ruleId == "lockrot/silent"' build/lockrot.sarif
 
-      - name: The page to a file
+      - name: The page to its default file
         id: html
         uses: ./
         with:
           working-directory: tests/fixtures/project
           target-php: '8.4'
           format: html
-          output: build/lockrot.html
       - name: Check the page
         shell: bash
         env:
           REPORT: ${{ steps.html.outputs.report }}
         run: |
           set -eux
-          [ -s build/lockrot.html ]
-          [ "$REPORT" = "$GITHUB_WORKSPACE/build/lockrot.html" ]
-          head -c 15 build/lockrot.html | grep -qi '<!doctype html'
+          # No output was asked for, so this is the name the action chose: an artifact named
+          # anything but .html does not open as a page in the browser that downloads it.
+          case "$REPORT" in *.html) ;; *) echo "the report is not a .html file: $REPORT"; exit 1 ;; esac
+          [ -s "$REPORT" ]
+          head -c 15 "$REPORT" | grep -qi '<!doctype html'
           # The page carries the same document --format=json writes, on one line in a script tag.
-          sed -n 's/.*<script id="lockrot-data" type="application\/json">\(.*\)<\/script>.*/\1/p' build/lockrot.html \
+          sed -n 's/.*<script id="lockrot-data" type="application\/json">\(.*\)<\/script>.*/\1/p' "$REPORT" \
             | jq -e '.report.lockrot.schema == 1 and (.report.findings | length) >= 1'
 
       - name: Baseline accepts today's findings
