@@ -6,6 +6,44 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.12] - 2026-09-23
+
+### Added
+
+- `fail-on: unchecked` — fail the run when a check a verdict rests on did not run, rather than pass
+  over an unasked question. The case it is for is the workflow that never passed `github-token`
+  through: anonymously GitHub allows 60 requests an hour, so lockrot asks about the packages that
+  already look stale on release age and no others, and a repository archived a week after its last
+  release is never seen. That run says `ok` and exits 0, exactly like a run that checked everything.
+  With this threshold it exits 1 and the evidence names each missing check and the signals it
+  blocked. It is neither a verdict nor a priority, so it composes with neither — pick it when the
+  question is "did this run actually check?" rather than "what did it find?". Credentials take away
+  the repository-activity reasons and only those: a package whose newest releases are dated by a
+  commit their tags share still carries the signal.
+
+### Changed
+
+- Runs lockrot 0.11.0. **`left-behind` now suggests a branch the project can install.** Until now
+  S8 named the newest releasing branch and wrote the constraint that follows it whatever PHP that
+  branch requires — a project on PHP 7.4 was told `require ^3.12` for a branch needing 8.1, a line
+  it cannot write. The suggestion is now held to the project's own `require.php` and the target
+  PHP, and where no releasing branch is within reach it says so and suggests nothing. A workflow
+  whose annotations or PR comment are read by a person sees different `require ^X` lines, and
+  fewer of them; the verdict itself is unchanged, so `fail-on: left-behind` and `fail-on: high`
+  fail on the same locks as before.
+- One number for how far behind the lock is: libyears, the years between each installed release
+  and its package's newest stable one, summed. It prints in the footer of every format, rides in
+  `--format=json` per finding and as a block, and shows in the HTML page. It is laid over the
+  verdicts and enters no `fail-on`, no priority and no baseline, so nothing in an existing workflow
+  changes because of it. A package whose installed tag is dated only by a commit its tags share is
+  left unmeasured rather than measured from that commit's date — on a lock full of
+  `symfony/polyfill-*` that is several packages counted as unknown instead of as a year or two
+  behind.
+- `abandoned` says whether there is somewhere to go. Packagist's replacement field is free text, so
+  an annotation could read `migrate to Symfony`; it is now printed only where it names a real
+  package, and the JSON carries it under `replacement` with the count split in `abandoned`.
+  See the [0.11.0 release notes](https://github.com/somework/lockrot/releases/tag/v0.11.0).
+
 ## [1.0.11] - 2026-09-22
 
 ### Added

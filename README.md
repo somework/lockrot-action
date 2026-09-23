@@ -54,7 +54,7 @@ other CI systems and local runs.
 
 | Input | Default | Meaning |
 |---|---|---|
-| `fail-on` | *(lockrot's own default: `none`)* | Verdict or priority that fails the step: `none`, `stale`, `old-promise`, `left-behind`, `pinned`, `silent`, `abandoned`, or `low`, `medium`, `high`, `critical` (a priority reads the package's place in the project, so `high` fails on an abandoned direct requirement and passes the same verdict in a transitive dev package). Empty defers to `extra.lockrot.fail-on` in `composer.json` |
+| `fail-on` | *(lockrot's own default: `none`)* | Verdict or priority that fails the step: `none`, `stale`, `old-promise`, `left-behind`, `pinned`, `silent`, `abandoned`, or `low`, `medium`, `high`, `critical` (a priority reads the package's place in the project, so `high` fails on an abandoned direct requirement and passes the same verdict in a transitive dev package), or `unchecked` — neither a verdict nor a priority, it fails on a finding whose check never ran, which is how a workflow that forgot `github-token` is caught. Empty defers to `extra.lockrot.fail-on` in `composer.json` |
 | `target-php` | *(`config.platform.php`, else the running PHP)* | PHP version the project targets, for the `old-promise` check. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html` |
 | `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it under `RUNNER_TEMP`; either way the path is the `report` output |
