@@ -6,6 +6,21 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-09-24
+
+### Changed
+
+- Runs lockrot 0.12.0. **The `format: html` page is new.** It is built in its own repository now,
+  [somework/lockrot-report](https://github.com/somework/lockrot-report), and lockrot vendors a
+  release of it: same report, same keys, same address format, so a link to a filtered view or an
+  open package still points where it did. The page carries its own Content-Security-Policy that
+  pins its one script and one stylesheet by hash and allows no connection of any kind. On a phone
+  the findings come first. A bad escape in the address no longer blanks the page, the theme button
+  is right the first time under a dark OS setting, and a release-branch label in the timeline wraps
+  instead of being cut short. Nothing else in the run changes: verdicts, priorities, `fail-on`,
+  annotations and the PR comment are the same as with 0.11.0. See the
+  [0.12.0 release notes](https://github.com/somework/lockrot/releases/tag/v0.12.0).
+
 ## [1.0.12] - 2026-09-23
 
 ### Added
@@ -197,7 +212,9 @@ Runs lockrot 0.2.2.
   cosign-signed with a build-provenance attestation and an SBOM.
 - Daily check for a new lockrot release that opens a pull request bumping `lockrot.env`.
 
-[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.11...HEAD
+[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.13...HEAD
+[1.0.13]: https://github.com/somework/lockrot-action/compare/v1.0.12...v1.0.13
+[1.0.12]: https://github.com/somework/lockrot-action/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/somework/lockrot-action/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/somework/lockrot-action/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/somework/lockrot-action/compare/v1.0.8...v1.0.9
