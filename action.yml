@@ -62,7 +62,7 @@ inputs:
     required: false
     default: 'false'
   args:
-    description: Extra command-line options passed to lockrot as given, split on whitespace. An option lockrot does not know fails the step with exit 1.
+    description: Extra command-line options passed to lockrot as given, split on whitespace. An option lockrot does not know fails the step with exit 2.
     required: false
     default: ''
   github-token:
