@@ -6,6 +6,31 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-02
+
+Runs lockrot 0.13.0. Read the first two entries if your workflow passes `args` or publishes the
+report outside the repository. Inputs and outputs are unchanged. The full list is in the
+[0.13.0 release notes](https://github.com/somework/lockrot/releases/tag/v0.13.0).
+
+### Changed
+
+- **Breaking:** a misspelt option or a missing value in `args`, or an invalid `LOCKROT_FAIL_ON` or
+  `LOCKROT_TARGET_PHP` in the job's environment, fails the step with exit `2` instead of `1`, so
+  `exit-code` no longer reads it as a finding. Action: fix the option or the variable.
+- **Breaking:** `format: json` and `format: html` reports carry `run.root_package`, the `name` in
+  `composer.json`, even when `extra.lockrot.project` renames the project. Action: if you publish
+  the report outside the repository and the name must stay private, remove it first.
+- A report quotes no credential and no path of the runner: URLs lose their login and token, and a
+  path keeps its last segment. Reports written by earlier versions could carry both.
+- With `COMPOSER` set in the job's environment, lockrot reads that manifest and its lock, as
+  Composer does.
+- An `extra.lockrot` key lockrot does not read gets a warning line in the log, naming the key it
+  was probably meant to be.
+- `format: html` is the lockrot-report 0.13.0 page.
+- `format: json` gains fields that state lockrot's decisions, among them `gate` (whether the run
+  fails), `priority_basis` and `origin`; the
+  [JSON schemas](https://lockrot.dev/schema/) list them all.
+
 ## [1.0.13] - 2026-09-24
 
 ### Changed
@@ -212,7 +237,8 @@ Runs lockrot 0.2.2.
   cosign-signed with a build-provenance attestation and an SBOM.
 - Daily check for a new lockrot release that opens a pull request bumping `lockrot.env`.
 
-[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.0.13...HEAD
+[Unreleased]: https://github.com/somework/lockrot-action/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/somework/lockrot-action/compare/v1.0.13...v1.1.0
 [1.0.13]: https://github.com/somework/lockrot-action/compare/v1.0.12...v1.0.13
 [1.0.12]: https://github.com/somework/lockrot-action/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/somework/lockrot-action/compare/v1.0.10...v1.0.11
