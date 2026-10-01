@@ -6,6 +6,14 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The job summary comes from the same lockrot run as the report: with lockrot 0.13.0 or newer
+  the run writes the markdown summary beside it with `--output`, instead of running lockrot a
+  second time offline. The summary now shows that run's own notes, an offline note included when
+  the run was offline. With an older lockrot `version`, or `--explain` in `args`, the second run
+  stays.
+
 ## [1.1.0] - 2026-10-02
 
 Runs lockrot 0.13.0. Read the first two entries if your workflow passes `args` or publishes the

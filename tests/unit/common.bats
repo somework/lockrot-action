@@ -14,6 +14,16 @@ teardown() { teardown_scratch; }
   [ "$(normalize_version '1.0.0-rc.1')" = "1.0.0-rc.1" ]
 }
 
+@test "version_at_least compares major, minor and patch as numbers" {
+  version_at_least 0.13.0 0.13.0
+  version_at_least 0.13.1 0.13.0
+  version_at_least 1.0.0 0.13.0
+  version_at_least 0.13.0-rc.1 0.13.0
+  ! version_at_least 0.12.9 0.13.0
+  ! version_at_least 0.9.0 0.13.0
+  ! version_at_least 0.2.10 0.13.0
+}
+
 @test "normalize_version refuses anything that is not a release version" {
   run normalize_version latest
   [ "$status" -eq 1 ]

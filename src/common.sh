@@ -109,6 +109,23 @@ normalize_version() {
   printf '%s\n' "$version"
 }
 
+# Whether release version $1 is $2 or newer, comparing major, minor and patch as numbers. A
+# pre-release counts as its release (`0.13.0-rc.1` is at least `0.13.0`): an option that appeared
+# in a release is there in its release candidates too.
+version_at_least() {
+  local -a have want
+  IFS=. read -r -a have <<< "${1%%[-+]*}"
+  IFS=. read -r -a want <<< "$2"
+  local i
+  for i in 0 1 2; do
+    if (( 10#${have[i]:-0} != 10#${want[i]:-0} )); then
+      (( 10#${have[i]:-0} > 10#${want[i]:-0} ))
+      return
+    fi
+  done
+  return 0
+}
+
 # 64 hex characters, lowercased, from a bare hash or `sha256:<hex>` or `sha256sum` output.
 normalize_sha256() {
   local hex

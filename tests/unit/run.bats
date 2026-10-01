@@ -21,7 +21,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_FAIL_ON=silent INPUT_TARGET_PHP=8.4 INPUT_DEV=true INPUT_ALL=yes INPUT_STRICT_NETWORK=1 INPUT_BASELINE=b.json INPUT_ARGS='--foo --bar=1' PHP_STUB_EXIT=1
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --fail-on=silent --target-php=8.4 --baseline=b.json --dev --all --strict-network --foo --bar=1" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --fail-on=silent --target-php=8.4 --baseline=b.json --dev --all --strict-network --foo --bar=1 --output=markdown:$RUNNER_TEMP/lockrot/summary.md" ]
   [ "$(output_value exit-code)" = "1" ]
   [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.txt" ]
   [[ "$output" == *"running lockrot 9.9.9: --format=github --fail-on=silent"* ]]
@@ -34,14 +34,42 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   grep -q '^::warning file=project/composer.lock,' "$RUNNER_TEMP/lockrot/report.txt"
 }
 
-@test "the summary is rendered from an offline markdown run with the same options, minus the offline note" {
+@test "the summary is the same run's markdown report, written through --output, notes as written" {
   export INPUT_FAIL_ON=silent INPUT_TARGET_PHP=8.4
   run_run
   [ "$status" -eq 0 ]
+  [ "$(grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | wc -l | tr -d ' ')" -eq 1 ]
+  ! grep -q -- '--offline' "$PHP_STUB_LOG"
+  [ "$(sed -n 1p "$GITHUB_STEP_SUMMARY")" = "### lockrot: stub summary" ]
+  grep -q 'offline: repository metadata' "$GITHUB_STEP_SUMMARY"
+  grep -q -- '- note: kept' "$GITHUB_STEP_SUMMARY"
+  [ ! -e "$RUNNER_TEMP/lockrot/summary.md" ]
+}
+
+@test "before lockrot 0.13.0 the summary comes from an offline markdown run, minus the offline note" {
+  export LOCKROT_VERSION=0.12.0 PHP_STUB_VERSION=0.12.0 INPUT_FAIL_ON=silent INPUT_TARGET_PHP=8.4
+  run_run
+  [ "$status" -eq 0 ]
+  ! grep -q -- '--output=' "$PHP_STUB_LOG"
   grep -q -- '--format=markdown --offline --fail-on=silent --target-php=8.4' "$PHP_STUB_LOG"
   [ "$(sed -n 1p "$GITHUB_STEP_SUMMARY")" = "### lockrot: stub summary" ]
   ! grep -q 'offline: repository metadata' "$GITHUB_STEP_SUMMARY"
   grep -q -- '- note: kept' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "with --explain in args the summary comes from an offline run, since lockrot refuses --output there" {
+  export INPUT_ARGS='--explain=acme/pkg'
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --explain=acme/pkg" ]
+  grep -q -- '--format=markdown --offline' "$PHP_STUB_LOG"
+}
+
+@test "no summary means no --output" {
+  export INPUT_SUMMARY=false
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(main_call)" = "$LOCKROT_PHAR --format=github" ]
 }
 
 @test "a markdown run feeds the summary directly" {
@@ -70,7 +98,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
 }
 
 @test "a failing summary run is a warning, not a failure" {
-  export PHP_STUB_SUMMARY_EXIT=2
+  export LOCKROT_VERSION=0.12.0 PHP_STUB_VERSION=0.12.0 PHP_STUB_SUMMARY_EXIT=2
   run_run
   [ "$status" -eq 0 ]
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
@@ -92,7 +120,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_FORMAT=html
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=html" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR --format=html --output=markdown:$RUNNER_TEMP/lockrot/summary.md" ]
   [[ "$output" != *"::warning file="* ]]
   [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.html" ]
   [[ "$output" == *"html report written to $RUNNER_TEMP/lockrot/report.html"* ]]
@@ -135,7 +163,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_ARGS='--all *'
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --all *" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --all * --output=markdown:$RUNNER_TEMP/lockrot/summary.md" ]
 }
 
 @test "a line break in an input is refused before anything runs" {
