@@ -64,7 +64,7 @@ other CI systems and local runs.
 | `baseline` | *(`lockrot-baseline.json`)* | Baseline file to read (`--baseline`) |
 | `generate-baseline` | `false` | Write this run's findings to the baseline and exit 0 (`--generate-baseline`) |
 | `strict-network` | `false` | Exit 1 when a Composer repository or GitHub could not be reached |
-| `args` | | Extra lockrot options, split on whitespace. A misspelt option fails the step with exit 1 |
+| `args` | | Extra lockrot options, split on whitespace. A misspelt option fails the step with exit 2 |
 | `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.2` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
 | `github-token` | `${{ github.token }}` | Token for GitHub repository-activity checks. Without one, checks are capped at 50 packages |
