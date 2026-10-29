@@ -11,7 +11,7 @@
 # the end names the same image without a digest and is maintained by hand.
 
 # --- stage 1: fetch and verify the archive ------------------------------------------------------
-FROM php:8.4-cli-alpine@sha256:37c8c64177612b72e7f9d2c00481739c166a3708bea27c1cfd27fea1291d82d1 AS download
+FROM php:8.4-cli-alpine@sha256:d8784155c4d37986be9ddd7a8950df7e78998cc48e35472cd69e2b9371424a65 AS download
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ARG LOCKROT_VERSION
 ARG LOCKROT_SHA256
@@ -29,7 +29,7 @@ RUN php /lockrot --version | grep -Fx "lockrot ${LOCKROT_VERSION}"
 # links against (ca-certificates included, for HTTPS). Removed: the PHP source tarball, headers,
 # PEAR, php-cgi and phpdbg, the extension build helpers, and the curl/tar/xz/openssl command-line
 # tools the base image carries for building extensions.
-FROM php:8.4-cli-alpine@sha256:37c8c64177612b72e7f9d2c00481739c166a3708bea27c1cfd27fea1291d82d1 AS runtime
+FROM php:8.4-cli-alpine@sha256:d8784155c4d37986be9ddd7a8950df7e78998cc48e35472cd69e2b9371424a65 AS runtime
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 RUN set -eux; \
     apk del --no-network curl tar xz openssl; \
