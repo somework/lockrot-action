@@ -56,15 +56,29 @@ main() {
     generate_baseline=true
     args+=(--generate-baseline)
   fi
+  local -a extra=()
   if [ -n "$(trim "${INPUT_ARGS:-}")" ]; then
     # Word-split on whitespace only: quoting is not interpreted, and `set -f` keeps a `*` from
     # turning into file names.
-    local -a extra
     set -f
     # shellcheck disable=SC2206
     extra=(${INPUT_ARGS})
     set +f
     args+=("${extra[@]}")
+  fi
+
+  # The job summary shows the markdown format. From lockrot 0.13.0 the run writes it beside the
+  # main report with --output, so both come from one analysis; an older lockrot, or a run with
+  # --explain (which refuses --output), gets it from a second, offline run after this one.
+  local summary_wanted=false summary_file="" summary_inline=false
+  if is_true "${INPUT_SUMMARY:-true}" && [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ "$generate_baseline" = false ]; then
+    summary_wanted=true
+    if [ "$format" != markdown ] && version_at_least "$version" 0.13.0 && ! has_explain ${extra[@]+"${extra[@]}"}; then
+      summary_file="$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")/lockrot/summary.md"
+      mkdir -p "$(dirname "$summary_file")"
+      args+=("--output=markdown:${summary_file}")
+      summary_inline=true
+    fi
   fi
 
   local report
@@ -105,18 +119,32 @@ main() {
     warn "lockrot exited with ${code}; see the log above for the reason"
   fi
 
-  if is_true "${INPUT_SUMMARY:-true}" && [ -n "${GITHUB_STEP_SUMMARY:-}" ] \
-    && [ "$generate_baseline" = false ] && [ "$code" -le 1 ]; then
-    write_summary "$phar" "$work_dir" "$format" "$report"
+  if [ "$summary_wanted" = true ] && [ "$code" -le 1 ]; then
+    if [ "$summary_inline" = true ]; then
+      append_summary "$summary_file" keep-notes
+    else
+      write_summary "$phar" "$work_dir" "$format" "$report"
+    fi
   fi
+  [ -z "$summary_file" ] || rm -f "$summary_file"
 
   set_output exit-code "$code"
   set_output report "$report"
 }
 
+# Whether the extra arguments ask for --explain, with or without a value.
+has_explain() {
+  local argument
+  for argument in "$@"; do
+    case "$argument" in --explain|--explain=*) return 0 ;; esac
+  done
+  return 1
+}
+
 # The runner refuses a step summary above 1 MiB; a report that large is left to the log and the
-# report file. The offline note is an artefact of how the summary is rendered, not of the run it
-# shows, so it is dropped.
+# report file. A summary rendered by a second, offline run carries an offline note that is an
+# artefact of that run, not of the one it shows, so it is dropped; `keep-notes` is for a summary
+# the main run wrote itself, whose notes are all its own.
 SUMMARY_LIMIT_BYTES=1000000
 append_summary() {
   local size
@@ -125,13 +153,18 @@ append_summary() {
     printf '### lockrot\n\nThe report is %s bytes, more than the job summary can hold; see the step log or the report file.\n' "$size" >> "$GITHUB_STEP_SUMMARY"
     return 0
   fi
+  if [ "${2:-}" = keep-notes ]; then
+    cat "$1" >> "$GITHUB_STEP_SUMMARY"
+    return 0
+  fi
   grep -v -F -x -e "- note: offline: repository metadata served from Composer's cache" "$1" \
     >> "$GITHUB_STEP_SUMMARY" || true
 }
 
 # The markdown format is the one shaped for a page, so it is what the job summary shows. When the
-# main run used another format, the report is produced again from the caches the first run just
-# filled — `--offline`, so no request is repeated and no rate-limit budget is spent twice.
+# main run used another format and could not write it too (lockrot before 0.13.0, or --explain),
+# the report is produced again from the caches the first run just filled — `--offline`, so no
+# request is repeated and no rate-limit budget is spent twice.
 write_summary() {
   local phar=$1 work_dir=$2 format=$3 report=$4
   if [ "$format" = "markdown" ]; then

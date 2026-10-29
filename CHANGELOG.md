@@ -6,6 +6,31 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The job summary comes from the same lockrot run as the report: with lockrot 0.13.0 or newer
+  the run writes the markdown summary beside it with `--output`, instead of running lockrot a
+  second time offline. The summary now shows that run's own notes, an offline note included when
+  the run was offline. With an older lockrot `version`, or `--explain` in `args`, the second run
+  stays.
+- The `fail-on` input describes the lockrot 0.14.0 values: a comma-separated list of a grade, a
+  flag (`capped` included), a `vulnerable` value and `unchecked`, or `none`. It links the
+  [CI page](https://lockrot.dev/ci/) for choosing them.
+- The `args` input says that `--explain` needs `format: table` or `format: json`, because the
+  action always passes `--format`, and that `--explain` exits 2 with `generate-baseline: true`.
+  It also says that `--fail-on`, `--baseline` or `--target-php` in `args` exits 2 when the input
+  of the same name is set.
+
+### Fixed
+
+- With `COMPOSER` set in the job's environment, the action reads the lock that Composer pairs
+  with it: `alt.json` gives `alt.lock`. The setup step requires that lock, the cache key hashes
+  it, and its annotations get the `working-directory` prefix. An absolute `COMPOSER` outside
+  `working-directory` leaves the annotations as lockrot writes them. The action required and
+  hashed `composer.lock` whatever `COMPOSER` named.
+- The `ghcr.io/somework/lockrot` image carries brotli-libs 1.2.1-r0 and libcurl 8.23.0-r0, which
+  fix CVE-2026-111497 and CVE-2026-92392. The php base image digest is updated as well.
+
 ## [1.1.0] - 2026-10-02
 
 Runs lockrot 0.13.0. Read the first two entries if your workflow passes `args` or publishes the

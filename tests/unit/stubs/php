@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # php stand-in for the unit tests: records its arguments, answers --version, and prints a canned
-# report whose exit code is $PHP_STUB_EXIT.
+# report whose exit code is $PHP_STUB_EXIT, and writes a markdown summary where --output asks for one.
 printf '%s\n' "$*" >> "${PHP_STUB_LOG:-/dev/null}"
 if [ "${1:-}" = "-r" ]; then
   case $2 in *PHP_VERSION_ID*) exit "${PHP_STUB_TOO_OLD:-0}" ;; esac
@@ -10,6 +10,11 @@ fi
 for argument in "$@"; do
   case $argument in
     --version) printf 'lockrot %s\n' "${PHP_STUB_VERSION:-9.9.9}"; exit 0 ;;
+  esac
+done
+for argument in "$@"; do
+  case $argument in
+    --output=markdown:*) printf '### lockrot: stub summary\n\n- note: offline: repository metadata served from Composer'"'"'s cache\n- note: kept\n' > "${argument#--output=markdown:}" ;;
   esac
 done
 for argument in "$@"; do

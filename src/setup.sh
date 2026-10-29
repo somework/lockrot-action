@@ -13,12 +13,17 @@ php_is_usable() {
 main() {
   reject_line_breaks INPUT_VERSION INPUT_CHECKSUM INPUT_WORKING_DIRECTORY INPUT_PHP_VERSION INPUT_CACHE
 
-  local action_path work_dir pinned_version pinned_sha requested version expected
+  local action_path work_dir lock lock_path pinned_version pinned_sha requested version expected
   action_path=$(native_path "${GITHUB_ACTION_PATH:?GITHUB_ACTION_PATH is not set}")
   work_dir=$(native_path "$(trim "${INPUT_WORKING_DIRECTORY:-.}")")
   [ -n "$work_dir" ] || work_dir=.
   reject_absolute_path working-directory "$work_dir"
-  [ -f "$work_dir/composer.lock" ] || fail "no composer.lock in '$work_dir' (working-directory)"
+  lock=$(composer_lock_name)
+  case "$lock" in
+    /*|[A-Za-z]:/*) lock_path=$lock ;;
+    *) lock_path="$work_dir/$lock" ;;
+  esac
+  [ -f "$lock_path" ] || fail "no ${lock} in '$work_dir' (working-directory)"
 
   pinned_version=$(read_env_value "$action_path/lockrot.env" LOCKROT_VERSION)
   pinned_sha=$(read_env_value "$action_path/lockrot.env" LOCKROT_SHA256)
@@ -79,7 +84,7 @@ main() {
   set_output php-needed "$php_needed"
   set_output cache-enabled "$cache_enabled"
   set_output cache-dir "$temp/lockrot-cache"
-  set_output lock-hash "$(sha256_of "$work_dir/composer.lock" | cut -c1-16)"
+  set_output lock-hash "$(sha256_of "$lock_path" | cut -c1-16)"
   set_output cache-date "$(date -u +%Y-%m-%d)"
 }
 
