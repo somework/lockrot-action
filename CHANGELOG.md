@@ -28,6 +28,8 @@ All notable changes to this action are documented here. The format follows
   it, and its annotations get the `working-directory` prefix. An absolute `COMPOSER` outside
   `working-directory` leaves the annotations as lockrot writes them. The action required and
   hashed `composer.lock` whatever `COMPOSER` named.
+- The `ghcr.io/somework/lockrot` image carries brotli-libs 1.2.1-r0 and libcurl 8.23.0-r0, which
+  fix CVE-2026-111497 and CVE-2026-92392. The php base image digest is updated as well.
 
 ## [1.1.0] - 2026-10-02
 
