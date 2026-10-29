@@ -54,7 +54,7 @@ other CI systems and local runs.
 
 | Input | Default | Meaning |
 |---|---|---|
-| `fail-on` | *(lockrot's own default: `none`)* | Verdict or priority that fails the step: `none`, `stale`, `old-promise`, `left-behind`, `pinned`, `silent`, `abandoned`, or `low`, `medium`, `high`, `critical` (a priority reads the package's place in the project, so `high` fails on an abandoned direct requirement and passes the same verdict in a transitive dev package), or `unchecked` — neither a verdict nor a priority, it fails on a finding whose check never ran, which is how a workflow that forgot `github-token` is caught. Empty defers to `extra.lockrot.fail-on` in `composer.json` |
+| `fail-on` | *(lockrot's own default: `none`)* | Comma-separated values that fail the step, at most one of each kind. A grade: `critical`, `high`, `medium` or `low`. A flag: `abandoned`, `silent`, `pinned`, `left-behind`, `old-promise`, `stale` or `capped`. A flag fails on itself and on each flag before it in this order. A `vulnerable` value: `vulnerable` (any severity), `vulnerable-medium`, `vulnerable-high` or `vulnerable-critical`. `unchecked` fails on a finding whose check did not run. `none` stands alone. Example: `left-behind,vulnerable-high`. Empty defers to `extra.lockrot.fail-on` in `composer.json`. See [choosing the values](https://lockrot.dev/ci/) |
 | `target-php` | *(`config.platform.php`, else the running PHP)* | PHP version the project targets, for the `old-promise` check. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html` |
 | `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it under `RUNNER_TEMP`; either way the path is the `report` output |
@@ -64,7 +64,7 @@ other CI systems and local runs.
 | `baseline` | *(`lockrot-baseline.json`)* | Baseline file to read (`--baseline`) |
 | `generate-baseline` | `false` | Write this run's findings to the baseline and exit 0 (`--generate-baseline`) |
 | `strict-network` | `false` | Exit 1 when a Composer repository or GitHub could not be reached |
-| `args` | | Extra lockrot options, split on whitespace. A misspelt option fails the step with exit 2 |
+| `args` | | Extra lockrot options, split on whitespace. A misspelt option fails the step with exit 2. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
 | `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.2` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
 | `github-token` | `${{ github.token }}` | Token for GitHub repository-activity checks. Without one, checks are capped at 50 packages |

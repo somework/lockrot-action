@@ -27,6 +27,13 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [[ "$output" == *"running lockrot 9.9.9: --format=github --fail-on=silent"* ]]
 }
 
+@test "a comma-separated fail-on list reaches lockrot as one option, unchanged" {
+  export INPUT_FAIL_ON=' left-behind,vulnerable-high,unchecked '
+  run_run
+  [ "$status" -eq 0 ]
+  [[ "$(main_call)" == "$LOCKROT_PHAR --format=github --fail-on=left-behind,vulnerable-high,unchecked --output="* ]]
+}
+
 @test "github annotations are printed with the working directory prepended" {
   run_run
   [ "$status" -eq 0 ]

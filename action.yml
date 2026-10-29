@@ -23,10 +23,13 @@ inputs:
     default: '.'
   fail-on:
     description: >-
-      Verdict or priority that fails the step (exit 1): none, stale, old-promise, left-behind,
-      pinned, silent, abandoned, or low, medium, high, critical; unchecked fails on a finding whose
-      check did not run. Empty leaves it to extra.lockrot.fail-on in
-      composer.json, which defaults to none.
+      Comma-separated values that fail the step (exit 1), at most one of each kind. A grade:
+      critical, high, medium or low. A flag: abandoned, silent, pinned, left-behind, old-promise,
+      stale or capped. A flag fails on itself and on each flag before it in this order. A
+      vulnerable value: vulnerable (any severity), vulnerable-medium, vulnerable-high or
+      vulnerable-critical. unchecked fails on a finding whose check did not run. none stands alone.
+      Example: left-behind,vulnerable-high. Empty leaves it to extra.lockrot.fail-on in
+      composer.json, which defaults to none. See https://lockrot.dev/ci/ for choosing the values.
     required: false
     default: ''
   target-php:
@@ -62,7 +65,12 @@ inputs:
     required: false
     default: 'false'
   args:
-    description: Extra command-line options passed to lockrot as given, split on whitespace. An option lockrot does not know fails the step with exit 2.
+    description: >-
+      Extra command-line options passed to lockrot as given, split on whitespace. An option
+      lockrot does not know fails the step with exit 2. The action always passes --format, so
+      --explain=vendor/package needs format table or json and exits 2 with any other format.
+      lockrot takes --fail-on, --baseline and --target-php once only, so one of them here exits 2
+      when the input of the same name is set.
     required: false
     default: ''
   github-token:
