@@ -87,6 +87,30 @@ teardown() { teardown_scratch; }
   [ "$(cat "$SCRATCH/r")" = "::error file=composer.lock,line=8::m" ]
 }
 
+@test "rewrite_annotation_paths prefixes the lock that COMPOSER names" {
+  printf '::error file=alt.lock,line=8,title=t::m\n::warning file=composer.lock,line=2::m\n' > "$SCRATCH/r"
+  COMPOSER=alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web
+  [ "$(sed -n 1p "$SCRATCH/r")" = "::error file=apps/web/alt.lock,line=8,title=t::m" ]
+  [ "$(sed -n 2p "$SCRATCH/r")" = "::warning file=composer.lock,line=2::m" ]
+}
+
+@test "rewrite_annotation_paths matches the lock name literally, not as a pattern" {
+  printf '::error file=altXlock,line=1::m\n::error file=a.b/alt.lock,line=2::m\n' > "$SCRATCH/r"
+  COMPOSER=a.b/alt.json rewrite_annotation_paths "$SCRATCH/r" app
+  [ "$(sed -n 1p "$SCRATCH/r")" = "::error file=altXlock,line=1::m" ]
+  [ "$(sed -n 2p "$SCRATCH/r")" = "::error file=app/a.b/alt.lock,line=2::m" ]
+}
+
+@test "composer_lock_name follows COMPOSER the way Composer does" {
+  [ "$(COMPOSER= composer_lock_name)" = "composer.lock" ]
+  [ "$(unset COMPOSER; composer_lock_name)" = "composer.lock" ]
+  [ "$(COMPOSER=alt.json composer_lock_name)" = "alt.lock" ]
+  [ "$(COMPOSER=' app/alt.json ' composer_lock_name)" = "app/alt.lock" ]
+  [ "$(COMPOSER=./alt.json composer_lock_name)" = "alt.lock" ]
+  [ "$(COMPOSER=manifest composer_lock_name)" = "manifest.lock" ]
+  [ "$(COMPOSER=manifest.json5 composer_lock_name)" = "manifest.json5.lock" ]
+}
+
 @test "rewrite_annotation_paths copes with sed-special characters in the directory" {
   printf '::warning file=composer.lock,line=1::m\n' > "$SCRATCH/r"
   rewrite_annotation_paths "$SCRATCH/r" 'a&b/c'

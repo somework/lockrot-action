@@ -134,7 +134,7 @@ normalize_sha256() {
   printf '%s\n' "$hex"
 }
 
-# The version `releases/latest` currently points at, read from the redirect GitHub answers with
+# The version `releases/latest` points at when the step runs, read from the redirect GitHub answers with
 # for the latest-asset URL. No API call, no token, no JSON parsing.
 resolve_latest_version() {
   local redirect
@@ -155,16 +155,31 @@ download() {
     || fail "could not download $1"
 }
 
+# The lock Composer pairs with the manifest that COMPOSER names, relative to the working directory:
+# `alt.json` gives `alt.lock`, a name without `.json` gets `.lock` appended, no COMPOSER gives
+# `composer.lock`. lockrot reads the same lock, so setup.sh and the annotation rewrite must agree.
+composer_lock_name() {
+  local manifest
+  manifest=$(trim "${COMPOSER:-}")
+  manifest=${manifest#./}
+  case "$manifest" in
+    '') printf 'composer.lock\n' ;;
+    *.json) printf '%s.lock\n' "${manifest%.json}" ;;
+    *) printf '%s.lock\n' "$manifest" ;;
+  esac
+}
+
 # `file=composer.lock` in a workflow command names the file relative to the checkout root, so a
 # project in a subdirectory needs the directory prepended for the annotation to land on its lock.
 rewrite_annotation_paths() {
   # $1 report file, $2 working directory relative to the workspace
-  local dir=$2 escaped
+  local dir=$2 escaped lock
   dir=${dir#./}
   dir=${dir%/}
   [ -n "$dir" ] && [ "$dir" != "." ] || return 0
   escaped=$(printf '%s' "$dir" | sed -e 's/[\/&]/\\&/g')
-  sed -e "s/^\(::[a-z]* file=\)composer\.lock,/\1${escaped}\/composer.lock,/" "$1" > "$1.tmp" \
+  lock=$(composer_lock_name | sed -e 's/[]\/$*.^[]/\\&/g')
+  sed -e "s/^\(::[a-z]* file=\)\(${lock}\),/\1${escaped}\/\2,/" "$1" > "$1.tmp" \
     && mv "$1.tmp" "$1"
 }
 

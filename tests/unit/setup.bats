@@ -124,6 +124,23 @@ evil=1"
   [[ "$output" == *"no composer.lock in 'elsewhere' (working-directory)"* ]]
 }
 
+@test "COMPOSER in the environment names the lock that is checked and hashed" {
+  rm "$GITHUB_WORKSPACE/project/composer.lock"
+  printf '{"packages": ["alt"]}\n' > "$GITHUB_WORKSPACE/project/alt.lock"
+  expected_hash=$(shasum -a 256 "$GITHUB_WORKSPACE/project/alt.lock" | cut -c1-16)
+  export COMPOSER=alt.json
+  run_setup
+  [ "$status" -eq 0 ]
+  [ "$(output_value lock-hash)" = "$expected_hash" ]
+}
+
+@test "a missing lock that COMPOSER names is reported by that name" {
+  export COMPOSER=alt.json
+  run_setup
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no alt.lock in 'project' (working-directory)"* ]]
+}
+
 @test "a missing download is reported" {
   export INPUT_VERSION=0.0.1
   run_setup
