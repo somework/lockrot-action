@@ -27,6 +27,13 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [[ "$output" == *"running lockrot 9.9.9: --format=github --fail-on=silent"* ]]
 }
 
+@test "a comma-separated fail-on list reaches lockrot as one option, unchanged" {
+  export INPUT_FAIL_ON=' left-behind,vulnerable-high,unchecked '
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --fail-on=left-behind,vulnerable-high,unchecked --output=markdown:$RUNNER_TEMP/lockrot/summary.md" ]
+}
+
 @test "github annotations are printed with the working directory prepended" {
   run_run
   [ "$status" -eq 0 ]
@@ -149,6 +156,17 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   : > "$SCRATCH/env.log"
   run_run
   grep -q "^unset|$LOCKROT_CACHE_DIR$" "$SCRATCH/env.log"
+}
+
+@test "COMPOSER from the job environment reaches the lockrot process unchanged" {
+  export COMPOSER=alt.json
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${COMPOSER:-unset}" >> "$SCRATCH/composer.log"\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(sort -u "$SCRATCH/composer.log")" = "alt.json" ]
 }
 
 @test "an archive that changed after verification is refused" {
