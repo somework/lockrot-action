@@ -31,6 +31,9 @@ RUN php /lockrot --version | grep -Fx "lockrot ${LOCKROT_VERSION}"
 # tools the base image carries for building extensions.
 FROM php:8.4-cli-alpine@sha256:d8784155c4d37986be9ddd7a8950df7e78998cc48e35472cd69e2b9371424a65 AS runtime
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+# The Alpine releases that fix CVE-2026-111497 and CVE-2026-92392 are newer than this base image.
+# hadolint ignore=DL3017
+RUN apk upgrade --no-cache brotli-libs libcurl
 RUN set -eux; \
     apk del --no-network curl tar xz openssl; \
     rm -rf /usr/src/php* /usr/local/include /usr/local/php \
