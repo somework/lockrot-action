@@ -17,15 +17,17 @@ All notable changes to this action are documented here. The format follows
   flag (`capped` included), a `vulnerable` value and `unchecked`, or `none`. It links the
   [CI page](https://lockrot.dev/ci/) for choosing them.
 - The `args` input says that `--explain` needs `format: table` or `format: json`, because the
-  action always passes `--format`. It also says that `--fail-on`, `--baseline` or `--target-php`
-  in `args` exits 2 when the input of the same name is set.
+  action always passes `--format`, and that `--explain` exits 2 with `generate-baseline: true`.
+  It also says that `--fail-on`, `--baseline` or `--target-php` in `args` exits 2 when the input
+  of the same name is set.
 
 ### Fixed
 
 - With `COMPOSER` set in the job's environment, the action reads the lock that Composer pairs
   with it: `alt.json` gives `alt.lock`. The setup step requires that lock, the cache key hashes
-  it, and its annotations get the `working-directory` prefix. The action required and hashed
-  `composer.lock` whatever `COMPOSER` named.
+  it, and its annotations get the `working-directory` prefix. An absolute `COMPOSER` outside
+  `working-directory` leaves the annotations as lockrot writes them. The action required and
+  hashed `composer.lock` whatever `COMPOSER` named.
 
 ## [1.1.0] - 2026-10-02
 

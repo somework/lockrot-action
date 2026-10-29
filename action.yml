@@ -24,12 +24,14 @@ inputs:
   fail-on:
     description: >-
       Comma-separated values that fail the step (exit 1), at most one of each kind. A grade:
-      critical, high, medium or low. A flag: abandoned, silent, pinned, left-behind, old-promise,
-      stale or capped. A flag fails on itself and on each flag before it in this order. A
-      vulnerable value: vulnerable (any severity), vulnerable-medium, vulnerable-high or
-      vulnerable-critical. unchecked fails on a finding whose check did not run. none stands alone.
-      Example: left-behind,vulnerable-high. Empty leaves it to extra.lockrot.fail-on in
-      composer.json, which defaults to none. See https://lockrot.dev/ci/ for choosing the values.
+      critical, high, medium or low, which fails on that grade or a higher one. A flag: abandoned,
+      silent, pinned, left-behind, old-promise, stale or capped. A flag fails on itself and on
+      each flag before it in this order. A vulnerable value: vulnerable (any severity),
+      vulnerable-medium, vulnerable-high or vulnerable-critical, which fails on that severity or a
+      higher one. unchecked fails on a finding whose check did not run. none stands alone.
+      Example: left-behind,vulnerable-high. Empty leaves it to LOCKROT_FAIL_ON, then to
+      extra.lockrot.fail-on in the manifest, which defaults to none. See https://lockrot.dev/ci/
+      for choosing the values.
     required: false
     default: ''
   target-php:
@@ -68,8 +70,8 @@ inputs:
     description: >-
       Extra command-line options passed to lockrot as given, split on whitespace. An option
       lockrot does not know fails the step with exit 2. The action always passes --format, so
-      --explain=vendor/package needs format table or json and exits 2 with any other format.
-      lockrot takes --fail-on, --baseline and --target-php once only, so one of them here exits 2
+      --explain=vendor/package needs format table or json and exits 2 with any other format. It
+      also exits 2 with generate-baseline set to true. lockrot takes --fail-on, --baseline and --target-php once only, so one of them here exits 2
       when the input of the same name is set.
     required: false
     default: ''

@@ -18,7 +18,7 @@ main() {
   work_dir=$(native_path "$(trim "${INPUT_WORKING_DIRECTORY:-.}")")
   [ -n "$work_dir" ] || work_dir=.
   reject_absolute_path working-directory "$work_dir"
-  lock=$(native_path "$(composer_lock_name)")
+  lock=$(composer_lock_name)
   case "$lock" in
     /*|[A-Za-z]:/*) lock_path=$lock ;;
     *) lock_path="$work_dir/$lock" ;;

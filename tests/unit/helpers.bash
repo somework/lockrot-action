@@ -20,6 +20,7 @@ github_env() {
   export CURL_STUB_LOG="$SCRATCH/curl.log"
   export PHP_STUB_LOG="$SCRATCH/php.log"
   export CURL_STUB_ROOT="$SCRATCH/releases"
+  unset COMPOSER
   cd "$GITHUB_WORKSPACE" || exit 1
 }
 

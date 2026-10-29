@@ -5,6 +5,7 @@ setup() {
   # shellcheck source=src/common.sh
   . "$ACTION_ROOT/src/common.sh"
   SCRATCH="$(mktemp -d)"
+  unset COMPOSER
 }
 teardown() { teardown_scratch; }
 
@@ -95,10 +96,38 @@ teardown() { teardown_scratch; }
 }
 
 @test "rewrite_annotation_paths matches the lock name literally, not as a pattern" {
-  printf '::error file=altXlock,line=1::m\n::error file=a.b/alt.lock,line=2::m\n' > "$SCRATCH/r"
-  COMPOSER=a.b/alt.json rewrite_annotation_paths "$SCRATCH/r" app
+  printf '::error file=altXlock,line=1::m\n::error file=alt.lock,line=2::m\n' > "$SCRATCH/r"
+  COMPOSER=alt.json rewrite_annotation_paths "$SCRATCH/r" app
   [ "$(sed -n 1p "$SCRATCH/r")" = "::error file=altXlock,line=1::m" ]
-  [ "$(sed -n 2p "$SCRATCH/r")" = "::error file=app/a.b/alt.lock,line=2::m" ]
+  [ "$(sed -n 2p "$SCRATCH/r")" = "::error file=app/alt.lock,line=2::m" ]
+}
+
+@test "rewrite_annotation_paths prefixes a lock that an absolute COMPOSER names inside the working directory" {
+  printf '::error file=alt.lock,line=1::m\n' > "$SCRATCH/r"
+  GITHUB_WORKSPACE=/w COMPOSER=/w/apps/web/alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web
+  [ "$(cat "$SCRATCH/r")" = "::error file=apps/web/alt.lock,line=1::m" ]
+}
+
+@test "rewrite_annotation_paths leaves the annotation alone for an absolute COMPOSER outside the working directory" {
+  printf '::error file=alt.lock,line=1::m\n' > "$SCRATCH/r"
+  GITHUB_WORKSPACE=/w COMPOSER=/elsewhere/alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web
+  [ "$(cat "$SCRATCH/r")" = "::error file=alt.lock,line=1::m" ]
+}
+
+@test "rewrite_annotation_paths matches a COMPOSER with backslashes or doubled slashes as lockrot writes it" {
+  printf '::error file=sub/alt.lock,line=1::m\n' > "$SCRATCH/r"
+  COMPOSER='sub\alt.json' rewrite_annotation_paths "$SCRATCH/r" app
+  [ "$(cat "$SCRATCH/r")" = "::error file=app/sub/alt.lock,line=1::m" ]
+  printf '::error file=sub/alt.lock,line=1::m\n' > "$SCRATCH/r"
+  COMPOSER='.//sub/.//alt.json' rewrite_annotation_paths "$SCRATCH/r" app
+  [ "$(cat "$SCRATCH/r")" = "::error file=app/sub/alt.lock,line=1::m" ]
+}
+
+@test "composer_lock_name spells the path the way lockrot names it" {
+  [ "$(COMPOSER='sub\alt.json' composer_lock_name)" = "sub/alt.lock" ]
+  [ "$(COMPOSER='.//alt.json' composer_lock_name)" = "alt.lock" ]
+  [ "$(COMPOSER='sub/././alt.json' composer_lock_name)" = "sub/alt.lock" ]
+  [ "$(COMPOSER='/abs//dir/alt.json' composer_lock_name)" = "/abs/dir/alt.lock" ]
 }
 
 @test "composer_lock_name follows COMPOSER the way Composer does" {
