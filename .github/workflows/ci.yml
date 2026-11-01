@@ -154,9 +154,11 @@ jobs:
           case "$REPORT" in *.html) ;; *) echo "the report is not a .html file: $REPORT"; exit 1 ;; esac
           [ -s "$REPORT" ]
           head -c 15 "$REPORT" | grep -qi '<!doctype html'
-          # The page carries the same document --format=json writes, on one line in a script tag.
+          # The page carries the same document --format=json writes, on one line in a script tag:
+          # report-1 up to lockrot 0.13, and from 0.14 report-2, which its $schema URL identifies.
           sed -n 's/.*<script id="lockrot-data" type="application\/json">\(.*\)<\/script>.*/\1/p' "$REPORT" \
-            | jq -e '.report.lockrot.schema == 1 and (.report.findings | length) >= 1'
+            | jq -e '(.report.lockrot.schema == 1 or .report["$schema"] == "https://lockrot.dev/schema/report-2.json")
+              and (.report.findings | type == "array" and length >= 1)'
 
       - name: Baseline accepts today's findings
         uses: ./
