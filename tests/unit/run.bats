@@ -72,6 +72,20 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   grep -q -- '--format=markdown --offline' "$PHP_STUB_LOG"
 }
 
+@test "a run that exits 0 without writing the summary file skips the summary and still sets the outputs" {
+  # Like LOCKROT_DISABLE=1: lockrot answers --version, then exits 0 before it writes anything.
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+  [ "$(output_value exit-code)" = "0" ]
+  [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.txt" ]
+  [[ "$output" == *"job summary skipped"* ]]
+}
+
 @test "no summary means no --output" {
   export INPUT_SUMMARY=false
   run_run

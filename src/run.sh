@@ -121,7 +121,12 @@ main() {
 
   if [ "$summary_wanted" = true ] && [ "$code" -le 1 ]; then
     if [ "$summary_inline" = true ]; then
-      append_summary "$summary_file" keep-notes
+      # lockrot can exit 0 or 1 before it writes anything: LOCKROT_DISABLE, --help, a usage error.
+      if [ -f "$summary_file" ]; then
+        append_summary "$summary_file" keep-notes
+      else
+        log "job summary skipped: lockrot exited with ${code} and wrote no summary"
+      fi
     else
       write_summary "$phar" "$work_dir" "$format" "$report"
     fi
