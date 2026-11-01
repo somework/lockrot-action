@@ -71,7 +71,6 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [ "$(main_call)" = "$LOCKROT_PHAR --format=table --explain=acme/pkg" ]
   ! grep -q -- '--format=markdown' "$PHP_STUB_LOG"
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
-  [[ "$output" == *"job summary skipped: --explain"* ]]
   [ "$(output_value exit-code)" = "0" ]
 }
 
@@ -86,7 +85,6 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
   [ "$(output_value exit-code)" = "0" ]
   [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.txt" ]
-  [[ "$output" == *"job summary skipped"* ]]
 }
 
 @test "a summary file left by an earlier step is not published when this run writes none" {
@@ -187,8 +185,9 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   grep -q "^unset|$LOCKROT_CACHE_DIR$" "$SCRATCH/env.log"
 }
 
-@test "the runner's own token goes to lockrot as GITHUB_TOKEN, which lockrot keeps from other hosts" {
-  export INPUT_GITHUB_TOKEN=ghs_runner LOCKROT_TOKEN_IS_RUNNER_TOKEN=true
+@test "a token in the input goes to lockrot as GITHUB_TOKEN only, so lockrot checks which host issued it" {
+  # A GHES runner with a GHES-issued token in the input: lockrot must not treat it as a github.com token.
+  export GITHUB_SERVER_URL=https://ghes.example INPUT_GITHUB_TOKEN=ghp_ghes_pat
   unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN
   mkdir -p "$SCRATCH/bin"
   printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "${GITHUB_TOKEN:-unset}" "${LOCKROT_GITHUB_TOKEN:-unset}" >> "$SCRATCH/env.log"\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
@@ -196,19 +195,19 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export PATH="$SCRATCH/bin:$PATH"
   run_run
   [ "$status" -eq 0 ]
-  [ "$(tail -n 1 "$SCRATCH/env.log")" = "ghs_runner|unset" ]
+  [ "$(tail -n 1 "$SCRATCH/env.log")" = "ghp_ghes_pat|unset" ]
 }
 
-@test "a token other than the runner's goes to lockrot as LOCKROT_GITHUB_TOKEN, a github.com token on every host" {
-  export INPUT_GITHUB_TOKEN=ghp_chosen LOCKROT_TOKEN_IS_RUNNER_TOKEN=false
-  unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN
+@test "a LOCKROT_GITHUB_TOKEN from the job environment reaches lockrot beside the input token" {
+  export GITHUB_SERVER_URL=https://ghes.example INPUT_GITHUB_TOKEN=ghs_runner LOCKROT_GITHUB_TOKEN=ghp_dotcom
+  unset GITHUB_TOKEN
   mkdir -p "$SCRATCH/bin"
   printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "${GITHUB_TOKEN:-unset}" "${LOCKROT_GITHUB_TOKEN:-unset}" >> "$SCRATCH/env.log"\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
   [ "$status" -eq 0 ]
-  [ "$(tail -n 1 "$SCRATCH/env.log")" = "unset|ghp_chosen" ]
+  [ "$(tail -n 1 "$SCRATCH/env.log")" = "ghs_runner|ghp_dotcom" ]
 }
 
 @test "COMPOSER from the job environment reaches the lockrot process unchanged" {

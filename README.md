@@ -37,14 +37,14 @@ other CI systems and local runs.
    the latest stable PHP with [shivammathur/setup-php](https://github.com/shivammathur/setup-php)
    (macOS runners ship none).
 3. **Restores the metadata cache** — Composer's repository metadata and lockrot's 24-hour cache of
-   GitHub repository activity — keyed by `composer.lock`, so a repeat run on the same lock file
+   repository activity — keyed by `composer.lock`, so a repeat run on the same lock file
    makes almost no requests.
 4. **Runs lockrot** in `working-directory` with the options you set, from the token in
    `github-token` (the workflow's own `GITHUB_TOKEN` by default) so repository-activity checks on
-   github.com are not capped. On another host's runner, give it a github.com token.
+   github.com are not capped. On another host's runner, set `LOCKROT_GITHUB_TOKEN` instead.
 5. **Reports**: with `format: github` (the default) every flagged package becomes an annotation on
    its own line of `composer.lock` in the pull request; every format also lands in the job summary as
-   a table, and the report file path comes back as an output.
+   a table, except with `--explain` in `args`, and the report file path comes back as an output.
 6. **Exits with lockrot's code** after the cache is saved: `0` clean or below `fail-on`, `1` a finding
    reached `fail-on`, `2` a tool or configuration error.
 
@@ -55,7 +55,7 @@ other CI systems and local runs.
 | Input | Default | Meaning |
 |---|---|---|
 | `fail-on` | *(lockrot's own default: `none`)* | Comma-separated values that fail the step, at most one of each kind. A grade: `critical`, `high`, `medium` or `low`, which fails on that grade or a higher one. A flag: `abandoned`, `silent`, `pinned`, `left-behind`, `old-promise`, `stale` or `capped`. A flag fails on itself and on each flag before it in this order. A `vulnerable` value: `vulnerable` (any severity), `vulnerable-medium`, `vulnerable-high` or `vulnerable-critical`, which fails on that severity or a higher one. `unchecked` fails on a finding whose check did not run. `none` stands alone. Example: `left-behind,vulnerable-high`. Empty defers to `LOCKROT_FAIL_ON`, then to `extra.lockrot.fail-on` in the manifest. See [choosing the values](https://lockrot.dev/ci/) |
-| `target-php` | *(`config.platform.php`, else the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, and the PHP the move check solves at. Set it explicitly |
+| `target-php` | *(`config.platform.php`, else the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html` |
 | `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it under `RUNNER_TEMP`; either way the path is the `report` output |
 | `working-directory` | `.` | Directory holding `composer.json` and `composer.lock` |
@@ -67,10 +67,10 @@ other CI systems and local runs.
 | `args` | | Extra lockrot options, split on whitespace. A misspelt option fails the step with exit 2. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. It also exits 2 with `generate-baseline: true`. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
 | `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.2` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
-| `github-token` | `${{ github.token }}` | Token for repository-activity checks on github.com. Without one, checks are capped at 50 repositories. The workflow's own token reaches github.com only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set a github.com token here: a token other than the workflow's own goes to lockrot as `LOCKROT_GITHUB_TOKEN` |
+| `github-token` | `${{ github.token }}` | Token for repository-activity checks on github.com, passed to lockrot as `GITHUB_TOKEN`. Without one, checks are capped at 50 repositories. lockrot sends it only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set `LOCKROT_GITHUB_TOKEN` to a github.com token in the step's or job's `env` instead |
 | `php-version` | | PHP to install with setup-php before running. Empty uses the runner's PHP when it is 7.4+ |
 | `cache` | `true` | Cache repository metadata and GitHub responses between runs |
-| `summary` | `true` | Add the report, rendered as markdown, to the job summary. Skipped above the runner's 1 MB limit, and with `--explain` in `args`, whose explanation is in the step log and the report file |
+| `summary` | `true` | Add the report, rendered as markdown, to the job summary. Skipped above the runner's 1 MB limit, and with `--explain` in `args`, whose explanation is in the report file (and in the step log for `format: table`) |
 
 Every lockrot option not listed here can be passed through `args`, and everything can also live under
 `extra.lockrot` in `composer.json` — see the
@@ -111,8 +111,9 @@ jobs:
           fail-on: silent
 ```
 
-A finding that reaches `fail-on` is an error annotation. A finding the baseline knows, and an
-`unchecked` record that fails nothing, is a notice. Other findings are warnings. GitHub renders
+Each annotation takes lockrot's mark for the finding: `error` when its own fact fails `fail-on`,
+`notice` when the baseline covers its fact or it is not graded, `warning` otherwise
+([how each format marks a finding](https://lockrot.dev/ci/#how-each-format-marks-a-finding)). GitHub renders
 a limited number of annotations per step; the job summary and the log always hold the whole report.
 
 ### SARIF in the Security tab
@@ -304,8 +305,8 @@ docker run --rm -v "$PWD:/app:ro" ghcr.io/somework/lockrot:0.2 --target-php=8.4 
 
 The working directory is `/app`; every lockrot option works as documented. Pass
 `-e GITHUB_SERVER_URL` with `-e GITHUB_TOKEN`: lockrot sends `GITHUB_TOKEN` to github.com only when
-`GITHUB_SERVER_URL` is unset or names github.com, so a runner token of another host stays on that
-host. For a github.com token on such a runner, pass `-e LOCKROT_GITHUB_TOKEN`. The metadata cache
+each of `GITHUB_SERVER_URL` and `GH_HOST` is unset, empty or names github.com, so a runner token of
+another host stays on that host. For a github.com token on such a runner, pass `-e LOCKROT_GITHUB_TOKEN`. The metadata cache
 lives under `/tmp/composer` — mount a volume there to keep it between runs. Any `--user` works.
 
 GitLab CI, with the findings shown inline in the merge request:

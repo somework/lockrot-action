@@ -37,8 +37,8 @@ inputs:
   target-php:
     description: >-
       PHP version the project runs on, e.g. 8.4. It decides old-promise, the branch left-behind
-      names, whether an advisory's fix runs on it and the PHP the move check solves at. Empty uses
-      config.platform.php or the running PHP.
+      names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether
+      the lock installs on it. Empty uses config.platform.php or the running PHP.
     required: false
     default: ''
   format:
@@ -80,10 +80,10 @@ inputs:
     default: ''
   github-token:
     description: >-
-      Token for repository-activity checks on github.com. Without one the checks are capped at 50
-      repositories per run. The workflow's own token reaches github.com only from a github.com
-      runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set a github.com token: a
-      token other than the workflow's own goes to lockrot as LOCKROT_GITHUB_TOKEN.
+      Token for repository-activity checks on github.com, passed to lockrot as GITHUB_TOKEN.
+      Without one the checks are capped at 50 repositories per run. lockrot sends it only from a
+      github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set
+      LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env instead.
     required: false
     default: ${{ github.token }}
   php-version:
@@ -99,7 +99,8 @@ inputs:
   summary:
     description: >-
       Add the report, rendered as markdown, to the job summary. Skipped above 1 MB, the runner's
-      limit, and with --explain in args, whose explanation is in the step log and the report file.
+      limit, and with --explain in args, whose explanation is in the report file (and in the step
+      log for format table).
     required: false
     default: 'true'
 
@@ -174,7 +175,6 @@ runs:
         INPUT_GENERATE_BASELINE: ${{ inputs.generate-baseline }}
         INPUT_ARGS: ${{ inputs.args }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
-        LOCKROT_TOKEN_IS_RUNNER_TOKEN: ${{ inputs.github-token == github.token }}
         INPUT_SUMMARY: ${{ inputs.summary }}
       run: bash "${GITHUB_ACTION_PATH//\\//}/src/run.sh"
 

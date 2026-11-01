@@ -101,15 +101,10 @@ main() {
 
   export COMPOSER_CACHE_DIR="${LOCKROT_CACHE_DIR:?LOCKROT_CACHE_DIR is not set}"
   export COMPOSER_NO_INTERACTION=1
-  # lockrot sends GITHUB_TOKEN to github.com only when the runner is on github.com, so the runner's
-  # own token never leaves a GHES, GHE.com, Gitea or Forgejo runner. A token chosen for the input is
-  # a github.com token on every host, and LOCKROT_GITHUB_TOKEN is the variable that says so.
+  # Never LOCKROT_GITHUB_TOKEN: the action cannot tell which host issued the token, and lockrot
+  # sends that variable to github.com unchecked. lockrot checks GITHUB_TOKEN against the runner's host.
   if [ -n "$(trim "${INPUT_GITHUB_TOKEN:-}")" ]; then
-    if [ "${LOCKROT_TOKEN_IS_RUNNER_TOKEN:-true}" = false ]; then
-      export LOCKROT_GITHUB_TOKEN="$INPUT_GITHUB_TOKEN"
-    else
-      export GITHUB_TOKEN="$INPUT_GITHUB_TOKEN"
-    fi
+    export GITHUB_TOKEN="$INPUT_GITHUB_TOKEN"
   fi
 
   log "running lockrot ${version}: ${args[*]}"
