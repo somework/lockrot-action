@@ -81,6 +81,7 @@ main() {
     if [ "$summary_wanted" = true ] && [ "$format" != markdown ] && version_at_least "$version" 0.13.0; then
       summary_file="$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")/lockrot/summary.md"
       mkdir -p "$(dirname "$summary_file")"
+      rm -f "$summary_file"
       args+=("--output=markdown:${summary_file}")
       summary_inline=true
     fi

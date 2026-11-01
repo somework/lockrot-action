@@ -89,6 +89,18 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [[ "$output" == *"job summary skipped"* ]]
 }
 
+@test "a summary file left by an earlier step is not published when this run writes none" {
+  printf '### lockrot: stale summary\n' > "$RUNNER_TEMP/lockrot/summary.md"
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+  [ "$(output_value exit-code)" = "0" ]
+}
+
 @test "no summary means no --output" {
   export INPUT_SUMMARY=false
   run_run
