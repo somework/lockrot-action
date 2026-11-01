@@ -68,12 +68,17 @@ main() {
   fi
 
   # The job summary shows the markdown format. From lockrot 0.13.0 the run writes it beside the
-  # main report with --output, so both come from one analysis; an older lockrot, or a run with
-  # --explain (which refuses --output), gets it from a second, offline run after this one.
+  # main report with --output, so both come from one analysis; an older lockrot gets it from a
+  # second, offline run after this one. --explain refuses --output, and a second run would show a
+  # whole offline report, whose advisories and gate line need not match the step, so it gets none.
   local summary_wanted=false summary_file="" summary_inline=false
   if is_true "${INPUT_SUMMARY:-true}" && [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ "$generate_baseline" = false ]; then
-    summary_wanted=true
-    if [ "$format" != markdown ] && version_at_least "$version" 0.13.0 && ! has_explain ${extra[@]+"${extra[@]}"}; then
+    if has_explain ${extra[@]+"${extra[@]}"}; then
+      log "job summary skipped: --explain explains one package in the step log and the report file"
+    else
+      summary_wanted=true
+    fi
+    if [ "$summary_wanted" = true ] && [ "$format" != markdown ] && version_at_least "$version" 0.13.0; then
       summary_file="$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")/lockrot/summary.md"
       mkdir -p "$(dirname "$summary_file")"
       args+=("--output=markdown:${summary_file}")
@@ -95,8 +100,15 @@ main() {
 
   export COMPOSER_CACHE_DIR="${LOCKROT_CACHE_DIR:?LOCKROT_CACHE_DIR is not set}"
   export COMPOSER_NO_INTERACTION=1
+  # lockrot sends GITHUB_TOKEN to github.com only when the runner is on github.com, so the runner's
+  # own token never leaves a GHES, GHE.com, Gitea or Forgejo runner. A token chosen for the input is
+  # a github.com token on every host, and LOCKROT_GITHUB_TOKEN is the variable that says so.
   if [ -n "$(trim "${INPUT_GITHUB_TOKEN:-}")" ]; then
-    export GITHUB_TOKEN="$INPUT_GITHUB_TOKEN"
+    if [ "${LOCKROT_TOKEN_IS_RUNNER_TOKEN:-true}" = false ]; then
+      export LOCKROT_GITHUB_TOKEN="$INPUT_GITHUB_TOKEN"
+    else
+      export GITHUB_TOKEN="$INPUT_GITHUB_TOKEN"
+    fi
   fi
 
   log "running lockrot ${version}: ${args[*]}"
@@ -167,7 +179,7 @@ append_summary() {
 }
 
 # The markdown format is the one shaped for a page, so it is what the job summary shows. When the
-# main run used another format and could not write it too (lockrot before 0.13.0, or --explain),
+# main run used another format and could not write it too (lockrot before 0.13.0),
 # the report is produced again from the caches the first run just filled — `--offline`, so no
 # request is repeated and no rate-limit budget is spent twice.
 write_summary() {

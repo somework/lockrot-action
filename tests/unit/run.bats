@@ -64,12 +64,15 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   grep -q -- '- note: kept' "$GITHUB_STEP_SUMMARY"
 }
 
-@test "with --explain in args the summary comes from an offline run, since lockrot refuses --output there" {
-  export INPUT_ARGS='--explain=acme/pkg'
+@test "with --explain in args no summary is written, since lockrot refuses --output there and a second run would differ" {
+  export INPUT_FORMAT=table INPUT_ARGS='--explain=acme/pkg'
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --explain=acme/pkg" ]
-  grep -q -- '--format=markdown --offline' "$PHP_STUB_LOG"
+  [ "$(main_call)" = "$LOCKROT_PHAR --format=table --explain=acme/pkg" ]
+  ! grep -q -- '--format=markdown' "$PHP_STUB_LOG"
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+  [[ "$output" == *"job summary skipped: --explain"* ]]
+  [ "$(output_value exit-code)" = "0" ]
 }
 
 @test "a run that exits 0 without writing the summary file skips the summary and still sets the outputs" {
@@ -170,6 +173,30 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   : > "$SCRATCH/env.log"
   run_run
   grep -q "^unset|$LOCKROT_CACHE_DIR$" "$SCRATCH/env.log"
+}
+
+@test "the runner's own token goes to lockrot as GITHUB_TOKEN, which lockrot keeps from other hosts" {
+  export INPUT_GITHUB_TOKEN=ghs_runner LOCKROT_TOKEN_IS_RUNNER_TOKEN=true
+  unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "${GITHUB_TOKEN:-unset}" "${LOCKROT_GITHUB_TOKEN:-unset}" >> "$SCRATCH/env.log"\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(tail -n 1 "$SCRATCH/env.log")" = "ghs_runner|unset" ]
+}
+
+@test "a token other than the runner's goes to lockrot as LOCKROT_GITHUB_TOKEN, a github.com token on every host" {
+  export INPUT_GITHUB_TOKEN=ghp_chosen LOCKROT_TOKEN_IS_RUNNER_TOKEN=false
+  unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "${GITHUB_TOKEN:-unset}" "${LOCKROT_GITHUB_TOKEN:-unset}" >> "$SCRATCH/env.log"\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(tail -n 1 "$SCRATCH/env.log")" = "unset|ghp_chosen" ]
 }
 
 @test "COMPOSER from the job environment reaches the lockrot process unchanged" {
