@@ -160,6 +160,41 @@ jobs:
             | jq -e '(.report.lockrot.schema == 1 or .report["$schema"] == "https://lockrot.dev/schema/report-2.json")
               and (.report.findings | type == "array" and length >= 1)'
 
+      - name: An option value after a space in args
+        id: spaced
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          args: --target-php 8.4
+          fail-on: none
+      - name: Check the spaced value
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.spaced.outputs.exit-code }}
+        run: |
+          set -eux
+          # Without the command name first, Symfony reads 8.4 as a command and exits 1.
+          [ "$EXIT_CODE" = "0" ]
+
+      - name: The lock as the output path is refused
+        id: guarded
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          output: tests/fixtures/project/composer.lock
+      - name: Check the refusal and the lock
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.guarded.outcome }}
+          EXIT_CODE: ${{ steps.guarded.outputs.exit-code }}
+        run: |
+          set -eux
+          [ "$OUTCOME" = "failure" ]
+          [ "$EXIT_CODE" = "2" ]
+          git diff --exit-code -- tests/fixtures/project/composer.lock
+
       - name: Baseline accepts today's findings
         uses: ./
         with:
