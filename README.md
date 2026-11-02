@@ -45,8 +45,10 @@ other CI systems and local runs.
 5. **Reports**: with `format: github` (the default) every flagged package becomes an annotation on
    its own line of `composer.lock` in the pull request; every format also lands in the job summary as
    a table, except with `--explain` in `args`, and the report file path comes back as an output.
-6. **Exits with lockrot's code** after the cache is saved: `0` clean or below `fail-on`, `1` a finding
-   reached `fail-on`, `2` a tool or configuration error.
+6. **Exits with lockrot's code** after the cache is saved. `0`: no finding failed `fail-on`, and
+   `strict-network` did not trip. `1`: a finding failed `fail-on`, or `strict-network` tripped.
+   `2`: lockrot could not run or finish, for an input, configuration or usage error, or a file
+   that it could not write.
 
 ![Job summary with the lockrot findings table](https://lockrot.dev/assets/first-run.png)
 
@@ -55,26 +57,29 @@ other CI systems and local runs.
 | Input | Default | Meaning |
 |---|---|---|
 | `fail-on` | *(lockrot's own default: `none`)* | Comma-separated values that fail the step, at most one of each kind. A grade: `critical`, `high`, `medium` or `low`, which fails on that grade or a higher one. A flag: `abandoned`, `silent`, `pinned`, `left-behind`, `old-promise`, `stale` or `capped`. A flag fails on itself and on each flag before it in this order. A `vulnerable` value: `vulnerable` (any severity), `vulnerable-medium`, `vulnerable-high` or `vulnerable-critical`, which fails on that severity or a higher one. `unchecked` fails on a finding whose check did not run. `none` stands alone. Example: `left-behind,vulnerable-high`. Empty defers to `LOCKROT_FAIL_ON`, then to `extra.lockrot.fail-on` in the manifest. See [choosing the values](https://lockrot.dev/ci/) |
-| `target-php` | *(`config.platform.php`, else the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
+| `target-php` | *(`LOCKROT_TARGET_PHP`, then `extra.lockrot.target-php`, then `config.platform.php`, then the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html` |
-| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it under `RUNNER_TEMP`; either way the path is the `report` output |
+| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it under `RUNNER_TEMP`. Either way the path is the `report` output. From lockrot 0.13.0 the action passes it as `--output`. lockrot then refuses `composer.json`, `composer.lock` and the baseline there with exit 2, and writes nothing. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1, and nothing refuses those files |
 | `working-directory` | `.` | Directory holding `composer.json` and `composer.lock` |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
 | `all` | `false` | Report every checked package, not only flagged ones (`--all`) |
 | `baseline` | *(`lockrot-baseline.json`)* | Baseline file to read (`--baseline`) |
-| `generate-baseline` | `false` | Write this run's findings to the baseline and exit 0 (`--generate-baseline`) |
-| `strict-network` | `false` | Exit 1 when a Composer repository or GitHub could not be reached |
-| `args` | | Extra lockrot options, split on whitespace. A misspelt option fails the step with exit 2. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. It also exits 2 with `generate-baseline: true`. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
+| `generate-baseline` | `false` | Write this run's findings to the baseline (`--generate-baseline`). The step exits 0 whatever `fail-on` says, 1 only when `strict-network` trips, and 2 when lockrot cannot run or finish. From lockrot 0.13.0 the report file holds the run's report |
+| `strict-network` | `false` | Exit 1 when a run note counts as a network failure. Such a note says that a Composer repository or a repository host (GitHub, GitLab, Bitbucket) did not answer. An offline run that finds no cached metadata for a locked package writes one too |
+| `args` | | Extra lockrot options, split on whitespace. The action passes the `lockrot` command name first, so a value can follow its option after a space (`--explain vendor/package`). From lockrot 0.13.0, a misspelt option, or a word that is no option value, fails the step with exit 2. An older lockrot exits 1 there. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. It also exits 2 with `generate-baseline: true`. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
 | `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.2` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
 | `github-token` | `${{ github.token }}` | Token for repository-activity checks on github.com, passed to lockrot as `GITHUB_TOKEN`. Without one, checks are capped at 50 repositories. lockrot sends it only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set `LOCKROT_GITHUB_TOKEN` to a github.com token in the step's or job's `env` instead |
 | `php-version` | | PHP to install with setup-php before running. Empty uses the runner's PHP when it is 7.4+ |
 | `cache` | `true` | Cache repository metadata and GitHub responses between runs |
-| `summary` | `true` | Add the report, rendered as markdown, to the job summary. Skipped above the runner's 1 MB limit, and with `--explain` in `args`, whose explanation is in the report file (and in the step log for `format: table`) |
+| `summary` | `true` | Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the action passes `--markdown-max-bytes=1000000` unless `args` sets it, so lockrot leaves rows out of a larger report to keep within the runner's 1 MB limit. That cap also applies to the report file of `format: markdown`, and to any markdown `--output` file in `args`. With an older lockrot, a summary above 1 MB is skipped. Skipped with `--explain` in `args`, whose explanation is in the report file (and in the step log for `format: table`) |
 
 Every lockrot option not listed here can be passed through `args`, and everything can also live under
 `extra.lockrot` in `composer.json` — see the
-[configuration reference](https://lockrot.dev/configuration/). Inputs win over `composer.json`.
+[configuration reference](https://lockrot.dev/configuration/). An input that is set wins over
+`composer.json` and over lockrot's environment variables. An input that is empty or `false` passes
+nothing, so the next source decides: `dev: false` leaves `extra.lockrot.include-dev: true` in
+effect.
 
 ## Outputs
 
@@ -165,9 +170,13 @@ One file, opened from the downloaded artifact with no server and nothing fetched
 report, the release branches behind every finding, the advisories and the baseline comparison, with
 the filters and the open package kept in the URL so a link points at what you were looking at. It is
 the format for the person who did not run it — a reviewer, or whoever picks the ticket up a week
-later. `if: always()` keeps the upload running when `fail-on` has already failed the step. `all:
-true` puts every checked package in the page at roughly 4 KB each; without it a 100-package lock
-lands around 250 KB. Needs lockrot 0.10.0 or newer.
+later. `if: always()` keeps the upload running when `fail-on` has already failed the step. Needs
+lockrot 0.10.0 or newer.
+
+The page embeds its renderer, about 600 KB in lockrot 0.14, so even a page for a small lock starts
+there. `all: true` adds the release detail of every checked package, not only of the flagged ones.
+With it, lockrot 0.14 pages measured 740 KB for a 22-package lock and 2.4 MB for a 210-package
+lock.
 
 ### A pull-request comment
 
@@ -184,6 +193,7 @@ steps:
       target-php: '8.4'
       format: markdown
       fail-on: none
+      args: --markdown-max-bytes=65536
   - if: github.event_name == 'pull_request'
     env:
       GH_TOKEN: ${{ github.token }}
@@ -191,6 +201,10 @@ steps:
       REPORT: ${{ steps.lockrot.outputs.report }}
     run: gh pr comment "$PR" --body-file "$REPORT"
 ```
+
+GitHub refuses a comment body above 65,536 characters. `--markdown-max-bytes` makes lockrot leave
+rows out of a larger report and add a row that counts them, instead of `gh pr comment` failing. It
+caps the job summary of the same run too. Needs lockrot 0.14.0 or newer.
 
 ### Accept what you have, fail on what arrives
 
@@ -239,7 +253,10 @@ runner 2.293 or newer for the conditional steps. To pick the version, or to forc
     dev: 'true'
 ```
 
-A development package is reported the same way, one priority step lower.
+A development package is reported the same way, but lockrot halves its whole score. A score of 1
+becomes 0, so that package is listed only with `all: true`, and `--fail-on=high` reads a high
+advisory with a reachable fix in it as `medium`. Add a `vulnerable` value such as
+`vulnerable-high` to fail on the advisory's own severity.
 
 ## Security
 
@@ -276,8 +293,9 @@ A development package is reported the same way, one priority step lower.
   [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/somework/lockrot-action) runs weekly.
 - Report an issue privately through [`SECURITY.md`](SECURITY.md).
 
-lockrot itself reads `composer.lock` and `composer.json`. It writes the baseline on
-`generate-baseline`, and the job summary file that the action asks for under `RUNNER_TEMP`. It never runs the project's own Composer plugins or scripts.
+lockrot itself reads `composer.lock` and `composer.json`. It writes the job summary file that the
+action asks for, and the baseline on `generate-baseline`. From lockrot 0.13.0 it also writes the
+report file, except with `--explain` in `args`. Otherwise the action copies the report there. It never runs the project's own Composer plugins or scripts.
 
 ## Versioning
 
@@ -287,8 +305,10 @@ lockrot itself reads `composer.lock` and `composer.json`. It writes the baseline
 - uses: somework/lockrot-action@<commit sha>   # v1.0.0
 ```
 
-A new lockrot release becomes a new patch release of this action (proposed automatically by the
-[update workflow](.github/workflows/update-lockrot.yml)). The lockrot version an action release
+The [update workflow](.github/workflows/update-lockrot.yml) proposes each new lockrot release as a
+change of this action. A lockrot release that changes an exit code, an option or the report goes
+out as a minor release of the action. Its changelog marks such a change **Breaking**, as 1.1.0 did
+for lockrot 0.13.0. A lockrot release without such a change goes out as a patch release. The lockrot version an action release
 pins is in its `lockrot.env`, and the `version` input picks another release at any time. The
 [changelog](CHANGELOG.md) lists both.
 
@@ -297,10 +317,11 @@ pins is in its `lockrot.env`, and the `version` input picks another release at a
 `ghcr.io/somework/lockrot` — the same verified `lockrot.phar` on the official PHP 8.4 CLI image
 with everything a CLI analysis never needs removed and the result flattened to one layer: 16 MB to
 pull, 44 MB on disk (the base image is 44 MB and 106 MB). Runs as a non-root user, built for
-`linux/amd64` and `linux/arm64`. Tags follow the lockrot version: `0.2.2`, `0.2` and `latest`.
+`linux/amd64` and `linux/arm64`. Tags follow the lockrot version that the action release pins:
+`0.14.0`, `0.14` and `latest` for lockrot 0.14.0.
 
 ```bash
-docker run --rm -v "$PWD:/app:ro" ghcr.io/somework/lockrot:0.2 --target-php=8.4 --fail-on=silent
+docker run --rm -v "$PWD:/app:ro" ghcr.io/somework/lockrot:0.14 --target-php=8.4 --fail-on=silent
 ```
 
 The working directory is `/app`; every lockrot option works as documented. Pass
@@ -314,7 +335,7 @@ GitLab CI, with the findings shown inline in the merge request:
 ```yaml
 lockrot:
   image:
-    name: ghcr.io/somework/lockrot:0.2
+    name: ghcr.io/somework/lockrot:0.14
     entrypoint: [""]
   variables:
     COMPOSER_CACHE_DIR: $CI_PROJECT_DIR/.lockrot-cache
@@ -336,10 +357,10 @@ identity and carries a build-provenance attestation and an SBOM. The signature i
 Sigstore bundle format, which needs cosign 3.0 or newer to verify:
 
 ```bash
-cosign verify ghcr.io/somework/lockrot:0.2.2 \
+cosign verify ghcr.io/somework/lockrot:0.14.0 \
   --certificate-identity-regexp '^https://github\.com/somework/lockrot-action/\.github/workflows/docker\.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-gh attestation verify oci://ghcr.io/somework/lockrot:0.2.2 --owner somework
+gh attestation verify oci://ghcr.io/somework/lockrot:0.14.0 --owner somework
 ```
 
 Base-image fixes arrive as Dependabot digest bumps to the Dockerfile; the image is rebuilt on every
