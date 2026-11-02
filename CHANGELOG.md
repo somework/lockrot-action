@@ -15,6 +15,18 @@ All notable changes to this action are documented here. The format follows
   in `args`, the action writes no job summary: lockrot refuses `--output` there, and a second
   offline run showed a whole report whose advisories and gate line could differ from the step.
   The explanation is in the step log and the report file.
+- The action passes `lockrot` as the command name before the options. A value can follow its
+  option after a space in `args`, such as `--explain vendor/package`. A word in `args` that is no
+  option value exits 2, where it named another command, such as `self-update`, or none.
+- With lockrot 0.13.0 or newer, the report goes to the `output` path through
+  `--output=<format>:<path>`, not through a shell redirection. lockrot then refuses
+  `composer.json`, `composer.lock` and the baseline as the path with exit 2, before it reads
+  them. Under `generate-baseline`, the report file holds the run's report. With `--explain` in
+  `args`, the report still comes from stdout, because lockrot refuses `--output` there.
+- With lockrot 0.14.0 or newer and the job summary on, the action passes
+  `--markdown-max-bytes=1000000` unless `args` sets it. lockrot then leaves rows out of a large
+  summary, where the action wrote only a size note. The cap also applies to the report file of
+  `format: markdown`.
 - The `fail-on` input describes the lockrot 0.14.0 values: a comma-separated list of a grade, a
   flag (`capped` included), a `vulnerable` value and `unchecked`, or `none`. It links the
   [CI page](https://lockrot.dev/ci/) for choosing them.
@@ -25,6 +37,23 @@ All notable changes to this action are documented here. The format follows
 
 ### Fixed
 
+- An option value after a space in `args` no longer exits 1, which the `exit-code` output names
+  as a finding that failed `fail-on`. A misspelt option followed by a value exits 2.
+- `output: composer.lock` or the baseline path no longer empties that file before lockrot reads
+  it.
+- With `format: markdown`, the job summary keeps the run's own offline note, as with the other
+  formats.
+- The version check reads stdout only, so a PHP startup warning on stderr no longer fails the
+  step.
+- The `generate-baseline`, `strict-network` and `exit-code` texts state lockrot's exit codes:
+  `generate-baseline` exits 1 when `strict-network` trips, and `strict-network` counts every run
+  note that is a network failure.
+- The `target-php` texts name `LOCKROT_TARGET_PHP` and `extra.lockrot.target-php` before
+  `config.platform.php`. The README says that an empty or `false` input passes nothing, so
+  `dev: false` leaves `extra.lockrot.include-dev` in effect.
+- The README states the lockrot 0.14 html page size and the halved score of a development
+  package. It names the Docker image tag of lockrot 0.14, and which lockrot releases make a minor
+  release of the action. The pull-request comment recipe caps the comment with `--markdown-max-bytes`.
 - A lockrot run that exits 0 or 1 without writing the job summary, such as one with
   `LOCKROT_DISABLE=1`, no longer fails the step. The action skips the summary and sets the
   `exit-code` and `report` outputs. It failed with a bash error and set no output.

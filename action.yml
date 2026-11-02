@@ -38,7 +38,9 @@ inputs:
     description: >-
       PHP version the project runs on, e.g. 8.4. It decides old-promise, the branch left-behind
       names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether
-      the lock installs on it. Empty uses config.platform.php or the running PHP.
+      the lock installs on it. Empty leaves it to LOCKROT_TARGET_PHP, then to
+      extra.lockrot.target-php in the manifest, then to config.platform.php, then to the running
+      PHP.
     required: false
     default: ''
   format:
@@ -46,7 +48,11 @@ inputs:
     required: false
     default: github
   output:
-    description: Where to write the report, relative to the workspace or absolute. Empty keeps it under RUNNER_TEMP; the path is the report output either way.
+    description: >-
+      Where to write the report, relative to the workspace or absolute. Empty keeps it under
+      RUNNER_TEMP. Either way the path is the report output. From lockrot 0.13.0 the action
+      passes it as --output. lockrot then refuses composer.json, composer.lock and the baseline there with
+      exit 2, before it reads them.
     required: false
     default: ''
   dev:
@@ -58,7 +64,10 @@ inputs:
     required: false
     default: 'false'
   strict-network:
-    description: Exit 1 when a Composer repository or GitHub could not be reached (--strict-network).
+    description: >-
+      Exit 1 when a run note counts as a network failure (--strict-network). Such a note says
+      that a Composer repository or a repository host (GitHub, GitLab, Bitbucket) did not answer.
+      An offline run that finds no cached metadata for a locked package writes one too.
     required: false
     default: 'false'
   baseline:
@@ -66,13 +75,18 @@ inputs:
     required: false
     default: ''
   generate-baseline:
-    description: Write this run's findings to the baseline file and exit 0 (--generate-baseline).
+    description: >-
+      Write this run's findings to the baseline file (--generate-baseline). The step exits 0
+      whatever fail-on says, and 1 only when strict-network trips. From lockrot 0.13.0 the report
+      file holds this run's report; stdout stays empty.
     required: false
     default: 'false'
   args:
     description: >-
-      Extra command-line options passed to lockrot as given, split on whitespace. An option
-      lockrot does not know fails the step with exit 2. The action always passes --format, so
+      Extra command-line options passed to lockrot as given, split on whitespace. The action
+      passes the lockrot command name first, so a value can follow its option after a space. An
+      option lockrot does not know, or a word that is no option value, fails the step with exit
+      2. The action always passes --format, so
       --explain=vendor/package needs format table or json and exits 2 with any other format. It
       also exits 2 with generate-baseline set to true. lockrot takes --fail-on, --baseline and --target-php once only, so one of them here exits 2
       when the input of the same name is set.
@@ -98,15 +112,21 @@ inputs:
     default: 'true'
   summary:
     description: >-
-      Add the report, rendered as markdown, to the job summary. Skipped above 1 MB, the runner's
-      limit, and with --explain in args, whose explanation is in the report file (and in the step
-      log for format table).
+      Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the
+      action passes --markdown-max-bytes=1000000 unless args sets it, so lockrot leaves rows out of
+      a larger report to keep within the runner's 1 MB limit. That cap also applies to the report
+      file of format markdown. With an older lockrot, a summary above 1 MB is skipped. Skipped
+      with --explain in args, whose explanation is in the report file (and in the step log for
+      format table).
     required: false
     default: 'true'
 
 outputs:
   exit-code:
-    description: 'lockrot exit code: 0 clean or below fail-on, 1 fail-on reached, 2 tool or configuration error.'
+    description: >-
+      lockrot exit code. 0: no finding failed fail-on, and strict-network did not trip. 1: a
+      finding failed fail-on, or strict-network tripped. 2: lockrot could not run or finish, for
+      an input, configuration or usage error, or a file that it could not write.
     value: ${{ steps.run.outputs.exit-code }}
   report:
     description: Path of the report file in the requested format.
