@@ -59,20 +59,20 @@ other CI systems and local runs.
 | `fail-on` | *(lockrot's own default: `none`)* | Comma-separated values that fail the step, at most one of each kind. A grade: `critical`, `high`, `medium` or `low`, which fails on that grade or a higher one. A flag: `abandoned`, `silent`, `pinned`, `left-behind`, `old-promise`, `stale` or `capped`. A flag fails on itself and on each flag before it in this order. A `vulnerable` value: `vulnerable` (any severity), `vulnerable-medium`, `vulnerable-high` or `vulnerable-critical`, which fails on that severity or a higher one. `unchecked` fails on a finding whose check did not run. `none` stands alone. Example: `left-behind,vulnerable-high`. Empty defers to `LOCKROT_FAIL_ON`, then to `extra.lockrot.fail-on` in the manifest. See [choosing the values](https://lockrot.dev/ci/) |
 | `target-php` | *(`LOCKROT_TARGET_PHP`, then `extra.lockrot.target-php`, then `config.platform.php`, then the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html` |
-| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it under `RUNNER_TEMP`. Either way the path is the `report` output. From lockrot 0.13.0 the action passes it as `--output`. lockrot then refuses `composer.json`, `composer.lock` and the baseline there with exit 2, before it reads them |
+| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it under `RUNNER_TEMP`. Either way the path is the `report` output. From lockrot 0.13.0 the action passes it as `--output`. lockrot then refuses `composer.json`, `composer.lock` and the baseline there with exit 2, and writes nothing. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1, and nothing refuses those files |
 | `working-directory` | `.` | Directory holding `composer.json` and `composer.lock` |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
 | `all` | `false` | Report every checked package, not only flagged ones (`--all`) |
 | `baseline` | *(`lockrot-baseline.json`)* | Baseline file to read (`--baseline`) |
-| `generate-baseline` | `false` | Write this run's findings to the baseline (`--generate-baseline`). The step exits 0 whatever `fail-on` says, and 1 only when `strict-network` trips. From lockrot 0.13.0 the report file holds the run's report |
+| `generate-baseline` | `false` | Write this run's findings to the baseline (`--generate-baseline`). The step exits 0 whatever `fail-on` says, 1 only when `strict-network` trips, and 2 when lockrot cannot run or finish. From lockrot 0.13.0 the report file holds the run's report |
 | `strict-network` | `false` | Exit 1 when a run note counts as a network failure. Such a note says that a Composer repository or a repository host (GitHub, GitLab, Bitbucket) did not answer. An offline run that finds no cached metadata for a locked package writes one too |
-| `args` | | Extra lockrot options, split on whitespace. The action passes the `lockrot` command name first, so a value can follow its option after a space (`--explain vendor/package`). A misspelt option, or a word that is no option value, fails the step with exit 2. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. It also exits 2 with `generate-baseline: true`. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
+| `args` | | Extra lockrot options, split on whitespace. The action passes the `lockrot` command name first, so a value can follow its option after a space (`--explain vendor/package`). From lockrot 0.13.0, a misspelt option, or a word that is no option value, fails the step with exit 2. An older lockrot exits 1 there. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. It also exits 2 with `generate-baseline: true`. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
 | `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.2` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
 | `github-token` | `${{ github.token }}` | Token for repository-activity checks on github.com, passed to lockrot as `GITHUB_TOKEN`. Without one, checks are capped at 50 repositories. lockrot sends it only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set `LOCKROT_GITHUB_TOKEN` to a github.com token in the step's or job's `env` instead |
 | `php-version` | | PHP to install with setup-php before running. Empty uses the runner's PHP when it is 7.4+ |
 | `cache` | `true` | Cache repository metadata and GitHub responses between runs |
-| `summary` | `true` | Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the action passes `--markdown-max-bytes=1000000` unless `args` sets it, so lockrot leaves rows out of a larger report to keep within the runner's 1 MB limit. That cap also applies to the report file of `format: markdown`. With an older lockrot, a summary above 1 MB is skipped. Skipped with `--explain` in `args`, whose explanation is in the report file (and in the step log for `format: table`) |
+| `summary` | `true` | Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the action passes `--markdown-max-bytes=1000000` unless `args` sets it, so lockrot leaves rows out of a larger report to keep within the runner's 1 MB limit. That cap also applies to the report file of `format: markdown`, and to any markdown `--output` file in `args`. With an older lockrot, a summary above 1 MB is skipped. Skipped with `--explain` in `args`, whose explanation is in the report file (and in the step log for `format: table`) |
 
 Every lockrot option not listed here can be passed through `args`, and everything can also live under
 `extra.lockrot` in `composer.json` — see the
@@ -293,8 +293,9 @@ advisory with a reachable fix in it as `medium`. Add a `vulnerable` value such a
   [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/somework/lockrot-action) runs weekly.
 - Report an issue privately through [`SECURITY.md`](SECURITY.md).
 
-lockrot itself reads `composer.lock` and `composer.json`. It writes the report file and the job
-summary file that the action asks for, and the baseline on `generate-baseline`. It never runs the project's own Composer plugins or scripts.
+lockrot itself reads `composer.lock` and `composer.json`. It writes the job summary file that the
+action asks for, and the baseline on `generate-baseline`. From lockrot 0.13.0 it also writes the
+report file, except with `--explain` in `args`. Otherwise the action copies the report there. It never runs the project's own Composer plugins or scripts.
 
 ## Versioning
 

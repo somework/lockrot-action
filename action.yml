@@ -51,8 +51,10 @@ inputs:
     description: >-
       Where to write the report, relative to the workspace or absolute. Empty keeps it under
       RUNNER_TEMP. Either way the path is the report output. From lockrot 0.13.0 the action
-      passes it as --output. lockrot then refuses composer.json, composer.lock and the baseline there with
-      exit 2, before it reads them.
+      passes it as --output. lockrot then refuses composer.json, composer.lock and the baseline
+      there with exit 2, and writes nothing. With --explain in args, or with an older lockrot, the
+      action copies stdout to the path after a run that exits 0 or 1, and nothing refuses those
+      files.
     required: false
     default: ''
   dev:
@@ -77,19 +79,19 @@ inputs:
   generate-baseline:
     description: >-
       Write this run's findings to the baseline file (--generate-baseline). The step exits 0
-      whatever fail-on says, and 1 only when strict-network trips. From lockrot 0.13.0 the report
-      file holds this run's report; stdout stays empty.
+      whatever fail-on says, 1 only when strict-network trips, and 2 when lockrot cannot run or
+      finish. From lockrot 0.13.0 the report file holds this run's report. stdout stays empty.
     required: false
     default: 'false'
   args:
     description: >-
       Extra command-line options passed to lockrot as given, split on whitespace. The action
-      passes the lockrot command name first, so a value can follow its option after a space. An
-      option lockrot does not know, or a word that is no option value, fails the step with exit
-      2. The action always passes --format, so
+      passes the lockrot command name first, so a value can follow its option after a space. From
+      lockrot 0.13.0, an option lockrot does not know, or a word that is no option value, fails
+      the step with exit 2. An older lockrot exits 1 there. The action always passes --format, so
       --explain=vendor/package needs format table or json and exits 2 with any other format. It
-      also exits 2 with generate-baseline set to true. lockrot takes --fail-on, --baseline and --target-php once only, so one of them here exits 2
-      when the input of the same name is set.
+      also exits 2 with generate-baseline set to true. lockrot takes --fail-on, --baseline and
+      --target-php once only, so one of them here exits 2 when the input of the same name is set.
     required: false
     default: ''
   github-token:
@@ -115,7 +117,7 @@ inputs:
       Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the
       action passes --markdown-max-bytes=1000000 unless args sets it, so lockrot leaves rows out of
       a larger report to keep within the runner's 1 MB limit. That cap also applies to the report
-      file of format markdown. With an older lockrot, a summary above 1 MB is skipped. Skipped
+      file of format markdown, and to any markdown --output file in args. With an older lockrot, a summary above 1 MB is skipped. Skipped
       with --explain in args, whose explanation is in the report file (and in the step log for
       format table).
     required: false

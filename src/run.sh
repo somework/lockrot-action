@@ -45,14 +45,18 @@ main() {
   local temp_dir
   temp_dir="$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")/lockrot"
   mkdir -p "$temp_dir"
+  # A directory of this run's own, so no output path can name a file the action writes or deletes.
+  SCRATCH_DIR=$(mktemp -d "${temp_dir}/run.XXXXXX")
+  trap 'rm -rf "$SCRATCH_DIR"' EXIT
 
-  # stdout only: a php.ini that loads a missing extension writes a startup warning to stderr on
-  # every run, and lockrot still runs.
+  # The last line of stdout only: a php.ini that loads a missing extension writes a startup
+  # warning on every run, to stderr and with display_startup_errors also to stdout, and lockrot
+  # still runs.
   local reported
-  if ! reported=$(php "$phar" --version 2> "$temp_dir/version.err"); then
-    fail "the downloaded lockrot.phar does not run on this PHP ($(php -r 'echo PHP_VERSION;' 2>/dev/null || echo unknown)): ${reported} $(tr '\n' ' ' < "$temp_dir/version.err")"
+  if ! reported=$(php "$phar" --version 2> "$SCRATCH_DIR/version.err"); then
+    fail "the downloaded lockrot.phar does not run on this PHP ($(php -r 'echo PHP_VERSION;' 2>/dev/null || echo unknown)): ${reported} $(tr '\n' ' ' < "$SCRATCH_DIR/version.err")"
   fi
-  rm -f "$temp_dir/version.err"
+  reported=$(printf '%s\n' "$reported" | tail -n 1)
   [ "$reported" = "lockrot ${version}" ] || fail "lockrot.phar reports '${reported}', expected 'lockrot ${version}'"
 
   build_args
@@ -89,12 +93,17 @@ main() {
   fi
   mkdir -p "$(dirname "$report")"
   # From lockrot 0.13.0 the report goes through --output, so lockrot refuses a target such as
-  # composer.lock or the baseline before it reads anything; a shell redirection would truncate the
-  # file first. --explain refuses --output, and an older lockrot has none, so both use stdout.
-  local stdout_file=$report
+  # composer.lock or the baseline and writes nothing. --explain refuses --output, and an older
+  # lockrot has none, so both get stdout copied there after a run that exits 0 or 1.
+  local stdout_file report_by_output=false report_id=""
+  stdout_file="${SCRATCH_DIR}/stdout.$(report_extension "$format")"
   if [ "$explain" = false ] && version_at_least "$version" 0.13.0; then
-    stdout_file="${temp_dir}/stdout.$(report_extension "$format")"
+    report_by_output=true
     args+=("--output=${format}:${report}")
+    # lockrot replaces the file by a rename, so a written report has a new file id.
+    if [ -e "$report" ] || [ -L "$report" ]; then
+      report_id=$(file_id "$report")
+    fi
   fi
 
   # The job summary shows the markdown format. A markdown run's own report is that. From lockrot
@@ -114,8 +123,7 @@ main() {
     if [ "$format" = markdown ]; then
       summary_file=$report
     elif version_at_least "$version" 0.13.0; then
-      summary_temp="${temp_dir}/summary.md"
-      rm -f "$summary_temp"
+      summary_temp="${SCRATCH_DIR}/summary.md"
       summary_file=$summary_temp
       args+=("--output=markdown:${summary_temp}")
     fi
@@ -139,16 +147,22 @@ main() {
   local code=0
   (cd "$work_dir" && php "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
 
-  if [ "$format" = github ]; then
-    rewrite_annotation_paths "$stdout_file" "$work_dir"
-    [ "$stdout_file" = "$report" ] || [ ! -f "$report" ] || rewrite_annotation_paths "$report" "$work_dir"
-  fi
+  [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir"
   case "$format" in
     github|table|markdown) cat "$stdout_file" ;;
   esac
-  [ "$stdout_file" = "$report" ] || rm -f "$stdout_file"
   # lockrot can exit before it writes anything: LOCKROT_DISABLE, --help, a usage error.
-  if [ ! -f "$report" ]; then
+  local report_written=false
+  if [ "$report_by_output" = true ]; then
+    if [ -f "$report" ] && [ "$(file_id "$report")" != "$report_id" ]; then
+      report_written=true
+      [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir"
+    fi
+  elif [ "$code" -le 1 ]; then
+    cp "$stdout_file" "$report"
+    report_written=true
+  fi
+  if [ "$report_written" = false ]; then
     log "lockrot wrote no ${format} report to ${report}"
   else
     case "$format" in
@@ -162,17 +176,23 @@ main() {
 
   if [ "$summary_wanted" = true ] && [ "$code" -le 1 ]; then
     if [ -z "$summary_file" ]; then
-      write_summary "$phar" "$work_dir" "$temp_dir"
-    elif [ -f "$summary_file" ]; then
+      write_summary "$phar" "$work_dir" "$SCRATCH_DIR"
+    elif { [ "$summary_file" = "$report" ] && [ "$report_written" = true ]; } \
+      || { [ "$summary_file" = "$summary_temp" ] && [ -f "$summary_file" ]; }; then
       append_summary "$summary_file" keep-notes
     else
       log "job summary skipped: lockrot exited with ${code} and wrote no summary"
     fi
   fi
-  [ -z "$summary_temp" ] || rm -f "$summary_temp"
 
   set_output exit-code "$code"
   set_output report "$report"
+}
+
+# The file id of $1 itself, not of a symlink's target.
+file_id() {
+  # shellcheck disable=SC2012 # only the inode column is read, never a file name
+  ls -di "$1" | awk '{ print $1 }'
 }
 
 # Whether the arguments after $1 give option $1, with its value joined by `=` or after a space.

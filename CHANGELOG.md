@@ -8,25 +8,29 @@ All notable changes to this action are documented here. The format follows
 
 ### Changed
 
-- The job summary comes from the same lockrot run as the report: with lockrot 0.13.0 or newer
-  the run writes the markdown summary beside it with `--output`, instead of running lockrot a
-  second time offline. The summary now shows that run's own notes, an offline note included when
+- The job summary comes from the same lockrot run as the report. With lockrot 0.13.0 or newer,
+  the run writes the markdown summary beside it with `--output`. The action no longer runs
+  lockrot a second time offline. The summary now shows that run's own notes, an offline note included when
   the run was offline. With an older lockrot `version`, the second run stays. With `--explain`
   in `args`, the action writes no job summary: lockrot refuses `--output` there, and a second
   offline run showed a whole report whose advisories and gate line could differ from the step.
   The explanation is in the step log and the report file.
 - The action passes `lockrot` as the command name before the options. A value can follow its
-  option after a space in `args`, such as `--explain vendor/package`. A word in `args` that is no
-  option value exits 2, where it named another command, such as `self-update`, or none.
+  option after a space in `args`, such as `--explain vendor/package`. From lockrot 0.13.0, a word
+  in `args` that is no option value exits 2, where it named another command, such as
+  `self-update`, or none.
 - With lockrot 0.13.0 or newer, the report goes to the `output` path through
   `--output=<format>:<path>`, not through a shell redirection. lockrot then refuses
-  `composer.json`, `composer.lock` and the baseline as the path with exit 2, before it reads
-  them. Under `generate-baseline`, the report file holds the run's report. With `--explain` in
-  `args`, the report still comes from stdout, because lockrot refuses `--output` there.
+  `composer.json`, `composer.lock` and the baseline as the path with exit 2, and writes nothing.
+  Under `generate-baseline`, the report file holds the run's report. With `--explain` in `args`,
+  or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1.
+  lockrot refuses `--output` with `--explain`.
+- The action keeps its own temporary files in a directory of each run under `RUNNER_TEMP`, so no
+  `output` path can name one of them.
 - With lockrot 0.14.0 or newer and the job summary on, the action passes
   `--markdown-max-bytes=1000000` unless `args` sets it. lockrot then leaves rows out of a large
   summary, where the action wrote only a size note. The cap also applies to the report file of
-  `format: markdown`.
+  `format: markdown`, and to any markdown `--output` file in `args`.
 - The `fail-on` input describes the lockrot 0.14.0 values: a comma-separated list of a grade, a
   flag (`capped` included), a `vulnerable` value and `unchecked`, or `none`. It links the
   [CI page](https://lockrot.dev/ci/) for choosing them.
@@ -40,11 +44,14 @@ All notable changes to this action are documented here. The format follows
 - An option value after a space in `args` no longer exits 1, which the `exit-code` output names
   as a finding that failed `fail-on`. A misspelt option followed by a value exits 2.
 - `output: composer.lock` or the baseline path no longer empties that file before lockrot reads
-  it.
+  it. lockrot refuses such a path, and the file stays as it was.
+- A file at the `output` path that lockrot did not replace in this run is not logged as written,
+  rewritten for annotations or published as the job summary. Such a file comes from an earlier
+  run, when lockrot exits before it writes, for example under `LOCKROT_DISABLE`.
 - With `format: markdown`, the job summary keeps the run's own offline note, as with the other
   formats.
-- The version check reads stdout only, so a PHP startup warning on stderr no longer fails the
-  step.
+- The version check reads the last line of stdout only, so a PHP startup warning no longer fails
+  the step.
 - The `generate-baseline`, `strict-network` and `exit-code` texts state lockrot's exit codes:
   `generate-baseline` exits 1 when `strict-network` trips, and `strict-network` counts every run
   note that is a network failure.
