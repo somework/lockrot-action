@@ -64,12 +64,39 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   grep -q -- '- note: kept' "$GITHUB_STEP_SUMMARY"
 }
 
-@test "with --explain in args the summary comes from an offline run, since lockrot refuses --output there" {
-  export INPUT_ARGS='--explain=acme/pkg'
+@test "with --explain in args no summary is written, since lockrot refuses --output there and a second run would differ" {
+  export INPUT_FORMAT=table INPUT_ARGS='--explain=acme/pkg'
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --explain=acme/pkg" ]
-  grep -q -- '--format=markdown --offline' "$PHP_STUB_LOG"
+  [ "$(main_call)" = "$LOCKROT_PHAR --format=table --explain=acme/pkg" ]
+  ! grep -q -- '--format=markdown' "$PHP_STUB_LOG"
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+  [ "$(output_value exit-code)" = "0" ]
+}
+
+@test "a run that exits 0 without writing the summary file skips the summary and still sets the outputs" {
+  # Like LOCKROT_DISABLE=1: lockrot answers --version, then exits 0 before it writes anything.
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+  [ "$(output_value exit-code)" = "0" ]
+  [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.txt" ]
+}
+
+@test "a summary file left by an earlier step is not published when this run writes none" {
+  printf '### lockrot: stale summary\n' > "$RUNNER_TEMP/lockrot/summary.md"
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+  [ "$(output_value exit-code)" = "0" ]
 }
 
 @test "no summary means no --output" {
@@ -156,6 +183,31 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   : > "$SCRATCH/env.log"
   run_run
   grep -q "^unset|$LOCKROT_CACHE_DIR$" "$SCRATCH/env.log"
+}
+
+@test "a token in the input goes to lockrot as GITHUB_TOKEN only, so lockrot checks which host issued it" {
+  # A GHES runner with a GHES-issued token in the input: lockrot must not treat it as a github.com token.
+  export GITHUB_SERVER_URL=https://ghes.example INPUT_GITHUB_TOKEN=ghp_ghes_pat
+  unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "${GITHUB_TOKEN:-unset}" "${LOCKROT_GITHUB_TOKEN:-unset}" >> "$SCRATCH/env.log"\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(tail -n 1 "$SCRATCH/env.log")" = "ghp_ghes_pat|unset" ]
+}
+
+@test "a LOCKROT_GITHUB_TOKEN from the job environment reaches lockrot beside the input token" {
+  export GITHUB_SERVER_URL=https://ghes.example INPUT_GITHUB_TOKEN=ghs_runner LOCKROT_GITHUB_TOKEN=ghp_dotcom
+  unset GITHUB_TOKEN
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "${GITHUB_TOKEN:-unset}" "${LOCKROT_GITHUB_TOKEN:-unset}" >> "$SCRATCH/env.log"\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(tail -n 1 "$SCRATCH/env.log")" = "ghs_runner|ghp_dotcom" ]
 }
 
 @test "COMPOSER from the job environment reaches the lockrot process unchanged" {
