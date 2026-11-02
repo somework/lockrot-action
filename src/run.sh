@@ -42,11 +42,17 @@ main() {
     table|json|github|sarif|gitlab|markdown|html) ;;
     *) fail "format '${format}' is not one of table, json, github, sarif, gitlab, markdown, html" ;;
   esac
+  local temp_dir
+  temp_dir="$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")/lockrot"
+  mkdir -p "$temp_dir"
 
+  # stdout only: a php.ini that loads a missing extension writes a startup warning to stderr on
+  # every run, and lockrot still runs.
   local reported
-  if ! reported=$(php "$phar" --version 2>&1); then
-    fail "the downloaded lockrot.phar does not run on this PHP ($(php -r 'echo PHP_VERSION;' 2>/dev/null || echo unknown)): ${reported}"
+  if ! reported=$(php "$phar" --version 2> "$temp_dir/version.err"); then
+    fail "the downloaded lockrot.phar does not run on this PHP ($(php -r 'echo PHP_VERSION;' 2>/dev/null || echo unknown)): ${reported} $(tr '\n' ' ' < "$temp_dir/version.err")"
   fi
+  rm -f "$temp_dir/version.err"
   [ "$reported" = "lockrot ${version}" ] || fail "lockrot.phar reports '${reported}', expected 'lockrot ${version}'"
 
   build_args
@@ -67,25 +73,8 @@ main() {
     args+=("${extra[@]}")
   fi
 
-  # The job summary shows the markdown format. From lockrot 0.13.0 the run writes it beside the
-  # main report with --output, so both come from one analysis; an older lockrot gets it from a
-  # second, offline run after this one. --explain refuses --output, and a second run would show a
-  # whole offline report, whose advisories and gate line need not match the step, so it gets none.
-  local summary_wanted=false summary_file="" summary_inline=false
-  if is_true "${INPUT_SUMMARY:-true}" && [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ "$generate_baseline" = false ]; then
-    if has_explain ${extra[@]+"${extra[@]}"}; then
-      log "job summary skipped: --explain explains one package in the step log and the report file"
-    else
-      summary_wanted=true
-    fi
-    if [ "$summary_wanted" = true ] && [ "$format" != markdown ] && version_at_least "$version" 0.13.0; then
-      summary_file="$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")/lockrot/summary.md"
-      mkdir -p "$(dirname "$summary_file")"
-      rm -f "$summary_file"
-      args+=("--output=markdown:${summary_file}")
-      summary_inline=true
-    fi
-  fi
+  local explain=false
+  ! has_option --explain ${extra[@]+"${extra[@]}"} || explain=true
 
   local report
   if [ -n "$(trim "${INPUT_OUTPUT:-}")" ]; then
@@ -95,9 +84,46 @@ main() {
       *) report="$(native_path "${GITHUB_WORKSPACE:-$PWD}")/${report}" ;;
     esac
   else
-    report="$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")/lockrot/report.$(report_extension "$format")"
+    report="${temp_dir}/report.$(report_extension "$format")"
+    rm -f "$report"
   fi
   mkdir -p "$(dirname "$report")"
+  # From lockrot 0.13.0 the report goes through --output, so lockrot refuses a target such as
+  # composer.lock or the baseline before it reads anything; a shell redirection would truncate the
+  # file first. --explain refuses --output, and an older lockrot has none, so both use stdout.
+  local stdout_file=$report
+  if [ "$explain" = false ] && version_at_least "$version" 0.13.0; then
+    stdout_file="${temp_dir}/stdout.$(report_extension "$format")"
+    args+=("--output=${format}:${report}")
+  fi
+
+  # The job summary shows the markdown format. A markdown run's own report is that. From lockrot
+  # 0.13.0 another format's run writes it beside the report with --output, so both come from one
+  # analysis; an older lockrot gets it from a second, offline run after this one. --explain refuses
+  # --output, and a second run would show a whole offline report, whose advisories and gate line
+  # need not match the step, so it gets none.
+  local summary_wanted=false summary_file="" summary_temp=""
+  if is_true "${INPUT_SUMMARY:-true}" && [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ "$generate_baseline" = false ]; then
+    if [ "$explain" = true ]; then
+      log "job summary skipped: --explain explains one package in the step log and the report file"
+    else
+      summary_wanted=true
+    fi
+  fi
+  if [ "$summary_wanted" = true ]; then
+    if [ "$format" = markdown ]; then
+      summary_file=$report
+    elif version_at_least "$version" 0.13.0; then
+      summary_temp="${temp_dir}/summary.md"
+      rm -f "$summary_temp"
+      summary_file=$summary_temp
+      args+=("--output=markdown:${summary_temp}")
+    fi
+    # lockrot then leaves rows out of a large markdown file instead of the runner refusing it.
+    if version_at_least "$version" 0.14.0 && ! has_option --markdown-max-bytes ${extra[@]+"${extra[@]}"}; then
+      args+=("--markdown-max-bytes=${SUMMARY_LIMIT_BYTES}")
+    fi
+  fi
 
   export COMPOSER_CACHE_DIR="${LOCKROT_CACHE_DIR:?LOCKROT_CACHE_DIR is not set}"
   export COMPOSER_NO_INTERACTION=1
@@ -108,56 +134,62 @@ main() {
   fi
 
   log "running lockrot ${version}: ${args[*]}"
+  # The command name first: Symfony reads the first bare word before it as a command name, so an
+  # option value after a space would run another command, or none, with exit 1.
   local code=0
-  (cd "$work_dir" && php "$phar" "${args[@]}") > "$report" || code=$?
+  (cd "$work_dir" && php "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
 
+  if [ "$format" = github ]; then
+    rewrite_annotation_paths "$stdout_file" "$work_dir"
+    [ "$stdout_file" = "$report" ] || [ ! -f "$report" ] || rewrite_annotation_paths "$report" "$work_dir"
+  fi
   case "$format" in
-    github)
-      rewrite_annotation_paths "$report" "$work_dir"
-      cat "$report"
-      ;;
-    table|markdown)
-      cat "$report"
-      ;;
-    *)
-      log "${format} report written to ${report} ($(wc -c < "$report" | tr -d ' ') bytes)"
-      ;;
+    github|table|markdown) cat "$stdout_file" ;;
   esac
+  [ "$stdout_file" = "$report" ] || rm -f "$stdout_file"
+  # lockrot can exit before it writes anything: LOCKROT_DISABLE, --help, a usage error.
+  if [ ! -f "$report" ]; then
+    log "lockrot wrote no ${format} report to ${report}"
+  else
+    case "$format" in
+      github|table|markdown) ;;
+      *) log "${format} report written to ${report} ($(wc -c < "$report" | tr -d ' ') bytes)" ;;
+    esac
+  fi
   if [ "$code" -gt 1 ]; then
     warn "lockrot exited with ${code}; see the log above for the reason"
   fi
 
   if [ "$summary_wanted" = true ] && [ "$code" -le 1 ]; then
-    if [ "$summary_inline" = true ]; then
-      # lockrot can exit 0 or 1 before it writes anything: LOCKROT_DISABLE, --help, a usage error.
-      if [ -f "$summary_file" ]; then
-        append_summary "$summary_file" keep-notes
-      else
-        log "job summary skipped: lockrot exited with ${code} and wrote no summary"
-      fi
+    if [ -z "$summary_file" ]; then
+      write_summary "$phar" "$work_dir" "$temp_dir"
+    elif [ -f "$summary_file" ]; then
+      append_summary "$summary_file" keep-notes
     else
-      write_summary "$phar" "$work_dir" "$format" "$report"
+      log "job summary skipped: lockrot exited with ${code} and wrote no summary"
     fi
   fi
-  [ -z "$summary_file" ] || rm -f "$summary_file"
+  [ -z "$summary_temp" ] || rm -f "$summary_temp"
 
   set_output exit-code "$code"
   set_output report "$report"
 }
 
-# Whether the extra arguments ask for --explain, with or without a value.
-has_explain() {
-  local argument
+# Whether the arguments after $1 give option $1, with its value joined by `=` or after a space.
+has_option() {
+  local name=$1 argument
+  shift
   for argument in "$@"; do
-    case "$argument" in --explain|--explain=*) return 0 ;; esac
+    case "$argument" in "$name"|"$name"=*) return 0 ;; esac
   done
   return 1
 }
 
-# The runner refuses a step summary above 1 MiB; a report that large is left to the log and the
-# report file. A summary rendered by a second, offline run carries an offline note that is an
-# artefact of that run, not of the one it shows, so it is dropped; `keep-notes` is for a summary
-# the main run wrote itself, whose notes are all its own.
+# The runner refuses a step summary above 1 MiB. lockrot 0.14.0 and newer keep the summary file
+# within this size (--markdown-max-bytes); from an older lockrot, a larger report is left to the
+# log and the report file. A summary rendered by a second, offline run carries an offline note
+# that is an artefact of that run, not of the one it shows, so it is dropped; `keep-notes` is for a
+# summary the main run wrote itself, whose notes are all its own.
 SUMMARY_LIMIT_BYTES=1000000
 append_summary() {
   local size
@@ -179,16 +211,12 @@ append_summary() {
 # the report is produced again from the caches the first run just filled — `--offline`, so no
 # request is repeated and no rate-limit budget is spent twice.
 write_summary() {
-  local phar=$1 work_dir=$2 format=$3 report=$4
-  if [ "$format" = "markdown" ]; then
-    append_summary "$report"
-    return 0
-  fi
+  local phar=$1 work_dir=$2 temp_dir=$3
   build_args
   local -a args=(--format=markdown --offline ${COMMON_ARGS[@]+"${COMMON_ARGS[@]}"})
   local summary code=0
-  summary="$(native_path "${RUNNER_TEMP:?RUNNER_TEMP is not set}")/lockrot/summary.md"
-  (cd "$work_dir" && php "$phar" "${args[@]}") > "$summary" 2> "$summary.err" || code=$?
+  summary="${temp_dir}/summary.md"
+  (cd "$work_dir" && php "$phar" lockrot "${args[@]}") > "$summary" 2> "$summary.err" || code=$?
   if [ "$code" -le 1 ]; then
     append_summary "$summary"
   else

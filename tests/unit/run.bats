@@ -21,7 +21,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_FAIL_ON=silent INPUT_TARGET_PHP=8.4 INPUT_DEV=true INPUT_ALL=yes INPUT_STRICT_NETWORK=1 INPUT_BASELINE=b.json INPUT_ARGS='--foo --bar=1' PHP_STUB_EXIT=1
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --fail-on=silent --target-php=8.4 --baseline=b.json --dev --all --strict-network --foo --bar=1 --output=markdown:$RUNNER_TEMP/lockrot/summary.md" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --fail-on=silent --target-php=8.4 --baseline=b.json --dev --all --strict-network --foo --bar=1 --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/summary.md --markdown-max-bytes=1000000" ]
   [ "$(output_value exit-code)" = "1" ]
   [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.txt" ]
   [[ "$output" == *"running lockrot 9.9.9: --format=github --fail-on=silent"* ]]
@@ -31,7 +31,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_FAIL_ON=' left-behind,vulnerable-high,unchecked '
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --fail-on=left-behind,vulnerable-high,unchecked --output=markdown:$RUNNER_TEMP/lockrot/summary.md" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --fail-on=left-behind,vulnerable-high,unchecked --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/summary.md --markdown-max-bytes=1000000" ]
 }
 
 @test "github annotations are printed with the working directory prepended" {
@@ -58,7 +58,8 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   run_run
   [ "$status" -eq 0 ]
   ! grep -q -- '--output=' "$PHP_STUB_LOG"
-  grep -q -- '--format=markdown --offline --fail-on=silent --target-php=8.4' "$PHP_STUB_LOG"
+  grep -q -- "$LOCKROT_PHAR lockrot --format=markdown --offline --fail-on=silent --target-php=8.4" "$PHP_STUB_LOG"
+  [ -s "$RUNNER_TEMP/lockrot/report.txt" ]
   [ "$(sed -n 1p "$GITHUB_STEP_SUMMARY")" = "### lockrot: stub summary" ]
   ! grep -q 'offline: repository metadata' "$GITHUB_STEP_SUMMARY"
   grep -q -- '- note: kept' "$GITHUB_STEP_SUMMARY"
@@ -68,8 +69,9 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_FORMAT=table INPUT_ARGS='--explain=acme/pkg'
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=table --explain=acme/pkg" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=table --explain=acme/pkg" ]
   ! grep -q -- '--format=markdown' "$PHP_STUB_LOG"
+  [ -s "$RUNNER_TEMP/lockrot/report.txt" ]
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
   [ "$(output_value exit-code)" = "0" ]
 }
@@ -99,11 +101,11 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [ "$(output_value exit-code)" = "0" ]
 }
 
-@test "no summary means no --output" {
+@test "no summary means no summary file and no markdown cap" {
   export INPUT_SUMMARY=false
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=github" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --output=github:$RUNNER_TEMP/lockrot/report.txt" ]
 }
 
 @test "a markdown run feeds the summary directly" {
@@ -154,7 +156,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_FORMAT=html
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=html --output=markdown:$RUNNER_TEMP/lockrot/summary.md" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=html --output=html:$RUNNER_TEMP/lockrot/report.html --output=markdown:$RUNNER_TEMP/lockrot/summary.md --markdown-max-bytes=1000000" ]
   [[ "$output" != *"::warning file="* ]]
   [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.html" ]
   [[ "$output" == *"html report written to $RUNNER_TEMP/lockrot/report.html"* ]]
@@ -233,7 +235,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_ARGS='--all *'
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR --format=github --all * --output=markdown:$RUNNER_TEMP/lockrot/summary.md" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --all * --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/summary.md --markdown-max-bytes=1000000" ]
 }
 
 @test "a line break in an input is refused before anything runs" {
@@ -245,10 +247,11 @@ exit-code=0"
   [ ! -s "$PHP_STUB_LOG" ]
 }
 
-@test "a report above the summary limit leaves a note instead" {
-  export INPUT_FORMAT=markdown
+@test "before lockrot 0.13.0, a report above the summary limit leaves a note instead" {
+  # That lockrot writes the report to stdout only, and only --output files can be capped.
+  export INPUT_FORMAT=markdown LOCKROT_VERSION=0.12.0
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nhead -c 1000001 /dev/zero | tr "\\0" x\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 0.12.0"; exit 0;; esac; done\nhead -c 1000001 /dev/zero | tr "\\0" x\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -269,4 +272,123 @@ exit-code=0"
   run_run
   [ "$status" -eq 1 ]
   [[ "$output" == *"lockrot.phar reports 'lockrot 0.0.1', expected 'lockrot 9.9.9'"* ]]
+}
+
+@test "lockrot is the first argument, so a value after a space stays the value of its option" {
+  # Without the command name, Symfony reads the first bare word as the command and exits 1.
+  export INPUT_FORMAT=table INPUT_ARGS='--explain acme/pkg'
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=table --explain acme/pkg" ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+}
+
+@test "the report goes through --output, so a lock named as the output is intact when lockrot reads it" {
+  # lockrot refuses composer.lock as an --output target and exits 2; this php stands in for that.
+  export INPUT_OUTPUT=project/composer.lock
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nprintf "%%s\\n" "$*" >> "$PHP_STUB_LOG"\ncat "$GITHUB_WORKSPACE/project/composer.lock" > "$SCRATCH/lock-seen"\nexit 2\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  grep -q -- "--output=github:$GITHUB_WORKSPACE/project/composer.lock" "$PHP_STUB_LOG"
+  [ "$(cat "$SCRATCH/lock-seen")" = '{"packages": []}' ]
+  [ "$(cat "$GITHUB_WORKSPACE/project/composer.lock")" = '{"packages": []}' ]
+  [ "$(output_value exit-code)" = "2" ]
+}
+
+@test "a report file that lockrot did not write is named in the log, not read" {
+  export INPUT_FORMAT=sarif
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 2\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(grep -cF -- 'No such file' <<< "$output")" -eq 0 ]
+  grep -qF -- 'lockrot wrote no sarif report' <<< "$output"
+  [ "$(output_value exit-code)" = "2" ]
+}
+
+@test "a default report file left by an earlier step is removed before the run" {
+  export INPUT_FORMAT=sarif
+  printf 'stale\n' > "$RUNNER_TEMP/lockrot/report.sarif"
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ ! -e "$RUNNER_TEMP/lockrot/report.sarif" ]
+}
+
+@test "generate-baseline writes the report through --output, since stdout stays empty" {
+  export INPUT_GENERATE_BASELINE=true
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --generate-baseline --output=github:$RUNNER_TEMP/lockrot/report.txt" ]
+  [ -s "$RUNNER_TEMP/lockrot/report.txt" ]
+}
+
+@test "a markdown run's summary keeps the run's own offline note" {
+  export INPUT_FORMAT=markdown
+  run_run
+  [ "$status" -eq 0 ]
+  grep -q 'offline: repository metadata' "$GITHUB_STEP_SUMMARY"
+  grep -q -- '- note: kept' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "a markdown run that writes no report file skips the summary" {
+  export INPUT_FORMAT=markdown
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+  [ "$(output_value exit-code)" = "0" ]
+}
+
+@test "a --markdown-max-bytes in args replaces the cap the action sets for the summary" {
+  export INPUT_ARGS='--markdown-max-bytes 65536'
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --markdown-max-bytes 65536 --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/summary.md" ]
+}
+
+@test "lockrot 0.13 gets no --markdown-max-bytes, which it does not know" {
+  export LOCKROT_VERSION=0.13.0 PHP_STUB_VERSION=0.13.0
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/summary.md" ]
+}
+
+@test "a release candidate of lockrot 0.14.0 gets the summary cap" {
+  export LOCKROT_VERSION=0.14.0-rc.9 PHP_STUB_VERSION=0.14.0-rc.9
+  run_run
+  [ "$status" -eq 0 ]
+  main_call | grep -q -- ' --markdown-max-bytes=1000000$'
+}
+
+@test "a PHP startup warning on stderr does not fail the version check" {
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\necho "PHP Warning:  PHP Startup: Unable to load dynamic library '"'"'missing.so'"'"'" >&2\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(output_value exit-code)" = "0" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/summary.md --markdown-max-bytes=1000000" ]
+}
+
+@test "a version check that fails names what php wrote on stderr" {
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\necho "PHP Parse error: stub" >&2\nexit 255\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 1 ]
+  grep -q -- 'does not run on this PHP.*PHP Parse error: stub' <<< "$output"
 }
