@@ -45,8 +45,8 @@ other CI systems and local runs.
 5. **Reports**: with `format: github` (the default) every flagged package becomes an annotation on
    its own line of `composer.lock` in the pull request. Every format also lands in the job summary
    as a table, and the report file path comes back as an output. With `--explain` in `args`, the
-   action writes no job summary. With `generate-baseline: true`, it writes no job summary and
-   prints no annotations, because lockrot writes nothing to stdout then.
+   action writes no job summary. With `generate-baseline: true`, the action writes no job
+   summary, and the step prints no annotations, because lockrot writes nothing to stdout then.
 6. **Exits with lockrot's code** after the cache is saved. `0`: no finding failed `fail-on`, and
    `strict-network` did not trip. `1`: a finding failed `fail-on`, or `strict-network` tripped.
    `2`: lockrot could not run or finish, for an input, configuration or usage error, or a file
@@ -71,7 +71,7 @@ other CI systems and local runs.
 | `args` | | Extra lockrot options, split on whitespace. The action passes the `lockrot` command name first, so a value can follow its option after a space (`--explain vendor/package`). From lockrot 0.13.0, a misspelt option, or a word that is no option value, fails the step with exit 2. An older lockrot exits 1 there. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. It also exits 2 with `generate-baseline: true`. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
 | `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.2` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
-| `github-token` | `${{ github.token }}` | Token for repository-activity checks on github.com, passed to lockrot as `GITHUB_TOKEN`. Without a token, lockrot asks github.com only about packages already stale on release age, and only up to a budget of them ([anonymous cap](https://lockrot.dev/notes/#repository_activity_anonymous_cap)). The packages that it does not ask about carry S10, so `fail-on: unchecked` fails on them. lockrot sends the token only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set `LOCKROT_GITHUB_TOKEN` to a github.com token in the step's or job's `env` instead. A `LOCKROT_GITHUB_TOKEN` in that `env` wins over this input |
+| `github-token` | `${{ github.token }}` | Token for repository-activity checks on github.com, passed to lockrot as `GITHUB_TOKEN`. Without a token, lockrot asks github.com only about packages already stale on release age, and only up to a budget of them ([anonymous cap](https://lockrot.dev/notes/#repository_activity_anonymous_cap)). A package that it does not ask about carries S10, unless it is marked abandoned, so `fail-on: unchecked` fails on it. lockrot sends the token only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set `LOCKROT_GITHUB_TOKEN` to a github.com token in the step's or job's `env` instead. A `LOCKROT_GITHUB_TOKEN` in that `env` wins over this input |
 | `php-version` | | PHP to install with setup-php before running. Empty uses the runner's PHP when it is 7.4+ |
 | `cache` | `true` | Cache repository metadata and GitHub responses between runs |
 | `summary` | `true` | Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the action passes `--markdown-max-bytes=1000000` unless `args` sets it, so lockrot leaves rows out of a larger report to keep within the runner's 1 MB limit. That cap also applies to the report file of `format: markdown`, and to any markdown `--output` file in `args`. With an older lockrot, a summary above 1 MB is skipped. Skipped with `--explain` in `args`, whose explanation is in the report file (and in the step log for `format: table`). Skipped with `generate-baseline: true` |
@@ -80,8 +80,10 @@ Every lockrot option not listed here can be passed through `args`, and everythin
 `extra.lockrot` in `composer.json` — see the
 [configuration reference](https://lockrot.dev/configuration/). An input that is set wins over
 `composer.json` and over lockrot's environment variables, except `github-token`. The action passes
-that input as `GITHUB_TOKEN`, and lockrot reads `LOCKROT_GITHUB_TOKEN` first, so a
-`LOCKROT_GITHUB_TOKEN` in the step's or job's `env` wins over it. An input that is empty or `false` passes
+that input as `GITHUB_TOKEN`, and lockrot reads `LOCKROT_GITHUB_TOKEN` first. So a
+`LOCKROT_GITHUB_TOKEN` in the step's or job's `env` wins over the input. A Composer credential for
+github.com, such as `github-oauth` in `auth.json`, wins over both
+([which credentials](https://lockrot.dev/internals/#which-credentials)). An input that is empty or `false` passes
 nothing, so the next source decides: `dev: false` leaves `extra.lockrot.include-dev: true` in
 effect.
 
@@ -124,8 +126,9 @@ Each annotation takes lockrot's mark for the finding: `error` when its own fact 
 `notice` when the baseline covers its fact or it is not graded, `warning` otherwise
 ([how each format marks a finding](https://lockrot.dev/ci/#how-each-format-marks-a-finding)). GitHub renders
 a limited number of annotations per step. The log holds every annotation. The job summary holds
-the whole report up to the runner's 1 MB limit. Above that limit, lockrot 0.14 leaves rows out of
-the summary, and with an older lockrot the summary holds only a size note.
+the whole report up to the runner's 1 MB limit. Above that limit, lockrot 0.14.0 or newer leaves
+rows out of the summary, unless `args` sets a larger `--markdown-max-bytes`. In that case, and
+with an older lockrot, the summary holds only a size note.
 
 ### SARIF in the Security tab
 
@@ -236,10 +239,11 @@ discarded when the job ends, so on its own the file goes nowhere.
     target-php: '8.4'
 ```
 
-Annotations are rewritten to `apps/api/composer.lock` so they land on the right file. SARIF needs
-no rewrite. lockrot names the lock relative to the directory that it ran in, and writes that
-directory as `%SRCROOT%` in `originalUriBaseIds`. Code scanning resolves the lock's path against
-it ([`--format=sarif`](https://lockrot.dev/ci/#-formatsarif)).
+Annotations are rewritten to `apps/api/composer.lock` so they land on the right file. SARIF is
+not rewritten. lockrot names the lock relative to the directory that it ran in, and code scanning
+reads a relative path against the root of the repository
+([SARIF support for code scanning](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/sarif-support-for-code-scanning)).
+So a subdirectory project's alerts point at `composer.lock` in the root.
 
 ### macOS and self-hosted runners
 
@@ -378,7 +382,7 @@ digest.
 ## FAQ
 
 **Why is this not a Docker action?** Pulling an image costs a few seconds and works on Linux runners
-only; downloading one PHAR archive and running it on the PHP already on the runner costs under a
+only. Downloading one PHAR archive and running it on the PHP already on the runner costs under a
 second and works everywhere, including Windows and macOS. A composite action can also wrap the
 metadata cache and pick any lockrot release through an input, which a fixed image reference cannot.
 The image exists for everything that is not GitHub Actions.

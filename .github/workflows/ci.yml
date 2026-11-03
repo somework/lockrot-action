@@ -217,7 +217,7 @@ jobs:
           set -eux
           [ -s tests/fixtures/project/lockrot-baseline.json ]
           grep -q '1 known' "$REPORT"
-          # The later steps run other lockrot releases, which refuse a baseline of a newer schema.
+          # The later steps run other lockrot releases, which refuse a baseline of another schema.
           rm tests/fixtures/project/lockrot-baseline.json
 
       - name: Explicit older release

@@ -81,7 +81,7 @@ All notable changes to this action are documented here. The format follows
   it, and its annotations get the `working-directory` prefix. An absolute `COMPOSER` outside
   `working-directory` leaves the annotations as lockrot writes them. The action required and
   hashed `composer.lock` whatever `COMPOSER` named.
-- A `working-directory` that does not exist fails the setup step. With an absolute `COMPOSER`
+- A `working-directory` that does not exist, or that the step cannot enter, fails the setup step. With an absolute `COMPOSER`
   whose lock exists, the run step failed instead and set `exit-code` to 1, although lockrot never
   ran.
 - An annotation path keeps a comma, colon or percent sign in `working-directory` or in the lock
@@ -91,13 +91,10 @@ All notable changes to this action are documented here. The format follows
   prints no annotations and writes no job summary. The README no longer says that the job
   summary always holds the whole report.
 - The `github-token` texts say what lockrot asks without a token: only packages already stale on
-  release age, up to a budget. The other packages carry S10, which `fail-on: unchecked` fails
-  on. The texts said that the checks were capped at 50 repositories.
+  release age, up to a budget. Each other package carries S10, unless it is marked abandoned,
+  and `fail-on: unchecked` fails on S10. The texts said that the checks were capped at 50 repositories.
 - The README says that a `LOCKROT_GITHUB_TOKEN` in the step's or job's `env` wins over the
-  `github-token` input.
-- The README section for a project in a subdirectory says that SARIF alerts land on its lock,
-  because lockrot writes the directory that it ran in as `%SRCROOT%`. It said that they point at
-  the wrong path.
+  `github-token` input, and that a Composer credential for github.com wins over both.
 - The README FAQ no longer states a size of the PHAR.
 - The `ghcr.io/somework/lockrot` image carries brotli-libs 1.2.1-r0 and libcurl 8.23.0-r0, which
   fix CVE-2026-111497 and CVE-2026-92392. The php base image digest is updated as well.

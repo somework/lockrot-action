@@ -172,8 +172,8 @@ composer_lock_name() {
   esac
 }
 
-# A workflow-command property value the way lockrot's github format writes it, so `%`, `:` and `,`
-# in a path stay part of the `file=` value.
+# A workflow-command property value the way lockrot's github format writes it for a path of
+# printable characters, so `%`, `:` and `,` in it stay part of the `file=` value.
 escape_property() {
   printf '%s' "$1" | sed -e 's/%/%25/g' -e 's/:/%3A/g' -e 's/,/%2C/g'
 }

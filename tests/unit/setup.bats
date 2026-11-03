@@ -146,7 +146,19 @@ evil=1"
   export COMPOSER="$GITHUB_WORKSPACE/project/composer.json"
   run_setup
   [ "$status" -eq 1 ]
-  [[ "$output" == *"::error::lockrot-action: the working-directory 'missing-dir' does not exist"* ]]
+  [[ "$output" == *"::error::lockrot-action: the working-directory 'missing-dir' is not a directory that the step can enter"* ]] || false
+  [ ! -s "$CURL_STUB_LOG" ]
+}
+
+@test "a working-directory that the step cannot enter is a setup error" {
+  mkdir "$GITHUB_WORKSPACE/closed"
+  chmod 000 "$GITHUB_WORKSPACE/closed"
+  export INPUT_WORKING_DIRECTORY=closed
+  export COMPOSER="$GITHUB_WORKSPACE/project/composer.json"
+  run_setup
+  chmod 755 "$GITHUB_WORKSPACE/closed"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::lockrot-action: the working-directory 'closed' is not a directory that the step can enter"* ]] || false
   [ ! -s "$CURL_STUB_LOG" ]
 }
 

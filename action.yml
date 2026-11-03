@@ -99,8 +99,8 @@ inputs:
     description: >-
       Token for repository-activity checks on github.com, passed to lockrot as GITHUB_TOKEN.
       Without a token, lockrot asks github.com only about packages already stale on release age,
-      and only up to a budget of them. The packages that it does not ask about carry S10, so
-      the unchecked value of fail-on fails on them. See
+      and only up to a budget of them. A package that it does not ask about carries S10, unless
+      it is marked abandoned, so the unchecked value of fail-on fails on it. See
       https://lockrot.dev/notes/#repository_activity_anonymous_cap. lockrot sends the token only
       from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set
       LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env instead. A
