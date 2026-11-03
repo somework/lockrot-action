@@ -172,6 +172,12 @@ composer_lock_name() {
   esac
 }
 
+# A workflow-command property value the way lockrot's github format writes it for a path of
+# printable characters, so `%`, `:` and `,` in it stay part of the `file=` value.
+escape_property() {
+  printf '%s' "$1" | sed -e 's/%/%25/g' -e 's/:/%3A/g' -e 's/,/%2C/g'
+}
+
 # `file=composer.lock` in a workflow command names the file relative to the checkout root, so a
 # project in a subdirectory needs the directory prepended for the annotation to land on its lock.
 rewrite_annotation_paths() {
@@ -180,7 +186,7 @@ rewrite_annotation_paths() {
   dir=${dir#./}
   dir=${dir%/}
   [ -n "$dir" ] && [ "$dir" != "." ] || return 0
-  escaped=$(printf '%s' "$dir" | sed -e 's/[\/&]/\\&/g')
+  escaped=$(escape_property "$dir" | sed -e 's/[\/&]/\\&/g')
   lock=$(composer_lock_name)
   case "$lock" in
     /*|[A-Za-z]:/*)
@@ -193,7 +199,7 @@ rewrite_annotation_paths() {
       esac
       ;;
   esac
-  lock=$(printf '%s' "$lock" | sed -e 's/[]\/$*.^[]/\\&/g')
+  lock=$(escape_property "$lock" | sed -e 's/[]\/$*.^[]/\\&/g')
   sed -e "s/^\(::[a-z]* file=\)\(${lock}\),/\1${escaped}\/\2,/" "$1" > "$1.tmp" \
     && mv "$1.tmp" "$1"
 }

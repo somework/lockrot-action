@@ -80,7 +80,8 @@ inputs:
     description: >-
       Write this run's findings to the baseline file (--generate-baseline). The step exits 0
       whatever fail-on says, 1 only when strict-network trips, and 2 when lockrot cannot run or
-      finish. From lockrot 0.13.0 the report file holds this run's report. stdout stays empty.
+      finish. From lockrot 0.13.0 the report file holds this run's report. stdout stays empty,
+      so the step prints no annotations, and the action writes no job summary.
     required: false
     default: 'false'
   args:
@@ -97,9 +98,13 @@ inputs:
   github-token:
     description: >-
       Token for repository-activity checks on github.com, passed to lockrot as GITHUB_TOKEN.
-      Without one the checks are capped at 50 repositories per run. lockrot sends it only from a
-      github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set
-      LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env instead.
+      Without a token, lockrot asks github.com only about packages already stale on release age,
+      and only up to a budget of them. A package that it does not ask about carries S10, unless
+      it is marked abandoned, so the unchecked value of fail-on fails on it. See
+      https://lockrot.dev/notes/#repository_activity_anonymous_cap. lockrot sends the token only
+      from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set
+      LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env instead. A
+      LOCKROT_GITHUB_TOKEN in that env wins over this input.
     required: false
     default: ${{ github.token }}
   php-version:
@@ -117,9 +122,10 @@ inputs:
       Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the
       action passes --markdown-max-bytes=1000000 unless args sets it, so lockrot leaves rows out of
       a larger report to keep within the runner's 1 MB limit. That cap also applies to the report
-      file of format markdown, and to any markdown --output file in args. With an older lockrot, a summary above 1 MB is skipped. Skipped
-      with --explain in args, whose explanation is in the report file (and in the step log for
-      format table).
+      file of format markdown, and to any markdown --output file in args. With an older lockrot, a
+      summary above 1 MB is skipped. Skipped with --explain in args, whose explanation is in the
+      report file (and in the step log for format table). Skipped with generate-baseline set to
+      true.
     required: false
     default: 'true'
 

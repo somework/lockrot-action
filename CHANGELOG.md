@@ -81,6 +81,21 @@ All notable changes to this action are documented here. The format follows
   it, and its annotations get the `working-directory` prefix. An absolute `COMPOSER` outside
   `working-directory` leaves the annotations as lockrot writes them. The action required and
   hashed `composer.lock` whatever `COMPOSER` named.
+- A `working-directory` that does not exist, or that the step cannot enter, fails the setup step. With an absolute `COMPOSER`
+  whose lock exists, the run step failed instead and set `exit-code` to 1, although lockrot never
+  ran.
+- An annotation path keeps a comma, colon or percent sign in `working-directory` or in the lock
+  name. The action escapes the directory and matches the lock as lockrot writes workflow-command
+  properties. Such a `file=` value ended at the comma, or kept no directory prefix.
+- The README and the `generate-baseline` and `summary` inputs say that `generate-baseline: true`
+  prints no annotations and writes no job summary. The README no longer says that the job
+  summary always holds the whole report.
+- The `github-token` texts say what lockrot asks without a token: only packages already stale on
+  release age, up to a budget. Each other package carries S10, unless it is marked abandoned,
+  and `fail-on: unchecked` fails on S10. The texts said that the checks were capped at 50 repositories.
+- The README says that a `LOCKROT_GITHUB_TOKEN` in the step's or job's `env` wins over the
+  `github-token` input, and that a Composer credential for github.com wins over both.
+- The README FAQ no longer states a size of the PHAR.
 - The `ghcr.io/somework/lockrot` image carries brotli-libs 1.2.1-r0 and libcurl 8.23.0-r0, which
   fix CVE-2026-111497 and CVE-2026-92392. The php base image digest is updated as well.
 
