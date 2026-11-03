@@ -25,8 +25,9 @@ main() {
   esac
   [ -f "$lock_path" ] || fail "no ${lock} in '$work_dir' (working-directory)"
   # An absolute COMPOSER passes the lock check without the directory that lockrot runs in.
-  [ -d "$work_dir" ] && [ -x "$work_dir" ] \
-    || fail "the working-directory '$work_dir' is not a directory that the step can enter"
+  if [ ! -d "$work_dir" ] || [ ! -x "$work_dir" ]; then
+    fail "the working-directory '$work_dir' is not a directory that the step can enter"
+  fi
 
   pinned_version=$(read_env_value "$action_path/lockrot.env" LOCKROT_VERSION)
   pinned_sha=$(read_env_value "$action_path/lockrot.env" LOCKROT_SHA256)
