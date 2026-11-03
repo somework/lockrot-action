@@ -141,6 +141,15 @@ evil=1"
   [[ "$output" == *"no alt.lock in 'project' (working-directory)"* ]]
 }
 
+@test "a missing working-directory is a setup error also when an absolute COMPOSER names an existing lock" {
+  export INPUT_WORKING_DIRECTORY=missing-dir
+  export COMPOSER="$GITHUB_WORKSPACE/project/composer.json"
+  run_setup
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::lockrot-action: the working-directory 'missing-dir' does not exist"* ]]
+  [ ! -s "$CURL_STUB_LOG" ]
+}
+
 @test "a missing download is reported" {
   export INPUT_VERSION=0.0.1
   run_setup

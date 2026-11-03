@@ -146,6 +146,15 @@ teardown() { teardown_scratch; }
   [ "$(cat "$SCRATCH/r")" = "::warning file=a&b/c/composer.lock,line=1::m" ]
 }
 
+@test "rewrite_annotation_paths escapes the directory and matches the lock as workflow-command properties" {
+  printf '::warning file=composer.lock,line=1::m\n' > "$SCRATCH/r"
+  rewrite_annotation_paths "$SCRATCH/r" 'a,b:c%d'
+  [ "$(cat "$SCRATCH/r")" = "::warning file=a%2Cb%3Ac%25d/composer.lock,line=1::m" ]
+  printf '::error file=x%%2Cy%%3Az%%25.lock,line=2::m\n' > "$SCRATCH/r"
+  COMPOSER='x,y:z%.json' rewrite_annotation_paths "$SCRATCH/r" app
+  [ "$(cat "$SCRATCH/r")" = "::error file=app/x%2Cy%3Az%25.lock,line=2::m" ]
+}
+
 @test "set_output uses the heredoc form so a value cannot smuggle a second output" {
   export GITHUB_OUTPUT="$SCRATCH/out"
   : > "$GITHUB_OUTPUT"
