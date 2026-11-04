@@ -72,11 +72,11 @@ inputs:
   strict-network:
     description: >-
       Exit 1 when a run note counts as a network failure (--strict-network). Such a note says
-      that lockrot could not read what it asked for, for one of these causes. A Composer
-      repository or a repository host (GitHub, GitLab, Bitbucket) did not answer or stopped at a
-      rate limit. A repository lists a locked package but returned no versions of it. An offline
-      run found no cached metadata for a locked package. The install-time budget ran out. See
-      https://lockrot.dev/notes/#metadata_unavailable.
+      that lockrot could not read what it asked for. A Composer repository or a repository host
+      (GitHub, GitLab, Bitbucket) did not answer, answered with an error or stopped at a rate
+      limit. A repository can also list a locked package but return no versions of it. An offline
+      run that finds no cached metadata for a locked package writes such a note too. See
+      https://lockrot.dev/notes/.
     required: false
     default: 'false'
   baseline:
@@ -144,8 +144,8 @@ outputs:
       lockrot exit code. 0: no finding failed fail-on, and strict-network did not trip. 1: a
       finding failed fail-on, or strict-network tripped. 2: lockrot could not run or finish, for
       an input, configuration or usage error, or a file that it could not write. Empty when the
-      action fails before lockrot runs, for example on a failed download or sha256 check, an
-      unknown format, a line break in an input or a missing lock.
+      action fails before it sets the output. Examples are a failed download or sha256 check, an
+      unknown format, a line break in an input and a missing lock.
     value: ${{ steps.run.outputs.exit-code }}
   report:
     description: >-

@@ -42,20 +42,24 @@ All notable changes to this action are documented here. The format follows
 ### Fixed
 
 - Without `output`, each action step writes its report in a directory of its own under
-  `RUNNER_TEMP`. A later step of the same job with the same format replaced the earlier step's
-  report, so `steps.<id>.outputs.report` of the earlier step named the later report.
-- With `format: github`, the annotation rewrite writes its temporary copy in the action's scratch
-  directory. It wrote and removed `<output>.tmp` beside the report, and a directory of that name
-  failed the step without the `exit-code` and `report` outputs.
+  `RUNNER_TEMP`. A later step of the same job with the same format replaced the earlier report.
+  The default path is no longer `RUNNER_TEMP/lockrot/report.<ext>`, so read it from the `report`
+  output.
+- With `format: github` and a `working-directory` other than the root, the annotation rewrite
+  writes its temporary copy in the action's scratch directory. It wrote and removed
+  `<output>.tmp` beside the report. A directory of that name failed the step without the
+  `exit-code` and `report` outputs.
+- A `format` input of whitespace only runs `github`, as an empty one does. It failed the step.
 - The README recipe for a project in a subdirectory sets `COMPOSER: apps/api/composer.json` with
   the default `working-directory`. SARIF, annotations and gitlab output then name
   `apps/api/composer.lock`.
 - The README and the `format` input say that the action always passes `--format`, so an empty
-  `format` runs `github` and `extra.lockrot.format` does not apply. The `baseline` texts say that
-  `extra.lockrot.baseline` replaces the default file.
-- The `exit-code` output texts say that the output is empty when the action fails before lockrot
-  runs. The `strict-network` texts also name a rate limit, a repository that lists a locked
-  package with no versions, and a spent install-time budget.
+  `format` runs `github` and `extra.lockrot.format` does not apply.
+- The `baseline` texts say that `extra.lockrot.baseline` replaces the default file.
+- The `exit-code` output texts say that the output is empty when the action fails before it sets
+  the output.
+- The `strict-network` texts also name an error answer, a rate limit, and a repository that lists
+  a locked package with no versions.
 - An option value after a space in `args` no longer exits 1, which the `exit-code` output names
   as a finding that failed `fail-on`. A misspelt option followed by a value exits 2.
 - `output: composer.lock` or the baseline path no longer empties that file before lockrot reads

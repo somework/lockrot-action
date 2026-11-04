@@ -37,7 +37,8 @@ main() {
   [ "$actual" = "$expected" ] || fail "lockrot.phar changed after it was verified (sha256 ${actual}, verified ${expected}); nothing will run"
   work_dir=$(native_path "$(trim "${INPUT_WORKING_DIRECTORY:-.}")")
   [ -n "$work_dir" ] || work_dir=.
-  format=$(trim "${INPUT_FORMAT:-github}")
+  format=$(trim "${INPUT_FORMAT:-}")
+  [ -n "$format" ] || format=github
   case "$format" in
     table|json|github|sarif|gitlab|markdown|html) ;;
     *) fail "format '${format}' is not one of table, json, github, sarif, gitlab, markdown, html" ;;
@@ -88,8 +89,12 @@ main() {
       *) report="$(native_path "${GITHUB_WORKSPACE:-$PWD}")/${report}" ;;
     esac
   else
-    # A directory of this step's own: a later step of the job must not replace this report.
-    report="$(mktemp -d "${temp_dir}/step.XXXXXX")/report.$(report_extension "$format")"
+    # A directory of this step's own: a later step of the job must not replace this report. Mode
+    # 755 as for RUNNER_TEMP/lockrot, so a later step that runs as another user can read it.
+    local step_dir
+    step_dir=$(mktemp -d "${temp_dir}/step.XXXXXX")
+    chmod 755 "$step_dir"
+    report="${step_dir}/report.$(report_extension "$format")"
   fi
   mkdir -p "$(dirname "$report")"
   # From lockrot 0.13.0 the report goes through --output, so lockrot refuses a target such as

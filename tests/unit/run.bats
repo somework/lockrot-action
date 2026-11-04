@@ -15,8 +15,8 @@ setup() {
 teardown() { teardown_scratch; }
 
 run_run() { run bash "$GITHUB_ACTION_PATH/src/run.sh"; }
-# The action's scratch directory and the default report directory have random names; they read as
-# run/ and step/ here.
+# The action's scratch directory and the default report directory have random names. They read
+# as run/ and step/ here.
 random_dirs() { sed -e "s#/lockrot/run\.[A-Za-z0-9]*/#/lockrot/run/#g" -e "s#/lockrot/step\.[A-Za-z0-9]*/#/lockrot/step/#g"; }
 main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -- '--format=markdown' | head -n 1 | random_dirs; }
 report_value() { output_value report | random_dirs; }
@@ -405,6 +405,30 @@ exit-code=0"
   run_run
   [ "$status" -eq 0 ]
   main_call | grep -q -- '^[^ ]* lockrot --format=github '
+}
+
+@test "a format input of whitespace only runs lockrot with --format=github" {
+  export INPUT_FORMAT='  '
+  run_run
+  [ "$status" -eq 0 ]
+  main_call | grep -q -- '^[^ ]* lockrot --format=github '
+}
+
+@test "the default report directory can be read by other users, as RUNNER_TEMP/lockrot can" {
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(ls -ld "$(dirname "$(output_value report)")" | cut -c1-10)" = "drwxr-xr-x" ]
+}
+
+@test "a default report directory that cannot be made stops the step before lockrot runs" {
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\ncase "$*" in *step.*) exit 1 ;; esac\nexec %s "$@"\n' "$(command -v mktemp)" > "$SCRATCH/bin/mktemp"
+  chmod +x "$SCRATCH/bin/mktemp"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -ne 0 ]
+  [ -z "$(main_call)" ]
+  [ -z "$(output_value report)" ]
 }
 
 @test "generate-baseline writes the report through --output, since stdout stays empty" {
