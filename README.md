@@ -60,14 +60,14 @@ other CI systems and local runs.
 |---|---|---|
 | `fail-on` | *(lockrot's own default: `none`)* | Comma-separated values that fail the step, at most one of each kind. A grade: `critical`, `high`, `medium` or `low`, which fails on that grade or a higher one. A flag: `abandoned`, `silent`, `pinned`, `left-behind`, `old-promise`, `stale` or `capped`. A flag fails on itself and on each flag before it in this order. A `vulnerable` value: `vulnerable` (any severity), `vulnerable-medium`, `vulnerable-high` or `vulnerable-critical`, which fails on that severity or a higher one. `unchecked` fails on a finding whose check did not run. `none` stands alone. Example: `left-behind,vulnerable-high`. Empty defers to `LOCKROT_FAIL_ON`, then to `extra.lockrot.fail-on` in the manifest. See [choosing the values](https://lockrot.dev/ci/) |
 | `target-php` | *(`LOCKROT_TARGET_PHP`, then `extra.lockrot.target-php`, then `config.platform.php`, then the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
-| `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html` |
-| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it under `RUNNER_TEMP`. Either way the path is the `report` output. From lockrot 0.13.0 the action passes it as `--output`. lockrot then refuses `composer.json`, `composer.lock` and the baseline there with exit 2, and writes nothing. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1, and nothing refuses those files |
+| `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html`. An empty value runs `github`. The action always passes `--format`, so `extra.lockrot.format` does not apply |
+| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. From lockrot 0.13.0 the action passes it as `--output`. lockrot then refuses `composer.json`, `composer.lock` and the baseline there with exit 2, and writes nothing. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1, and nothing refuses those files |
 | `working-directory` | `.` | Directory holding `composer.json` and `composer.lock` |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
 | `all` | `false` | Report every checked package, not only flagged ones (`--all`) |
-| `baseline` | *(`lockrot-baseline.json`)* | Baseline file to read (`--baseline`) |
+| `baseline` | *(`extra.lockrot.baseline`, then `lockrot-baseline.json`)* | Baseline file to read, relative to `composer.json` (`--baseline`). When empty, an `extra.lockrot.baseline` in `composer.json` replaces the default file `lockrot-baseline.json` |
 | `generate-baseline` | `false` | Write this run's findings to the baseline (`--generate-baseline`). The step exits 0 whatever `fail-on` says, 1 only when `strict-network` trips, and 2 when lockrot cannot run or finish. From lockrot 0.13.0 the report file holds the run's report. The step prints no annotations, and the action writes no job summary |
-| `strict-network` | `false` | Exit 1 when a run note counts as a network failure. Such a note says that a Composer repository or a repository host (GitHub, GitLab, Bitbucket) did not answer. An offline run that finds no cached metadata for a locked package writes one too |
+| `strict-network` | `false` | Exit 1 when a run note counts as a network failure. Such a note says that lockrot could not read what it asked for, for one of these causes. A Composer repository or a repository host (GitHub, GitLab, Bitbucket) did not answer or stopped at a rate limit. A repository lists a locked package but returned no versions of it. An offline run found no cached metadata for a locked package. The install-time budget ran out ([run notes](https://lockrot.dev/notes/#metadata_unavailable)) |
 | `args` | | Extra lockrot options, split on whitespace. The action passes the `lockrot` command name first, so a value can follow its option after a space (`--explain vendor/package`). From lockrot 0.13.0, a misspelt option, or a word that is no option value, fails the step with exit 2. An older lockrot exits 1 there. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. It also exits 2 with `generate-baseline: true`. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
 | `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.2` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
@@ -76,8 +76,8 @@ other CI systems and local runs.
 | `cache` | `true` | Cache repository metadata and GitHub responses between runs |
 | `summary` | `true` | Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the action passes `--markdown-max-bytes=1000000` unless `args` sets it, so lockrot leaves rows out of a larger report to keep within the runner's 1 MB limit. That cap also applies to the report file of `format: markdown`, and to any markdown `--output` file in `args`. With an older lockrot, a summary above 1 MB is skipped. Skipped with `--explain` in `args`, whose explanation is in the report file (and in the step log for `format: table`). Skipped with `generate-baseline: true` |
 
-Every lockrot option not listed here can be passed through `args`, and everything can also live under
-`extra.lockrot` in `composer.json` — see the
+Every lockrot option not listed here can be passed through `args`. Every option except the format
+can also live under `extra.lockrot` in `composer.json` — see the
 [configuration reference](https://lockrot.dev/configuration/). An input that is set wins over
 `composer.json` and over lockrot's environment variables, except `github-token`. The action passes
 that input as `GITHUB_TOKEN`, and lockrot reads `LOCKROT_GITHUB_TOKEN` first. So a
@@ -85,14 +85,15 @@ that input as `GITHUB_TOKEN`, and lockrot reads `LOCKROT_GITHUB_TOKEN` first. So
 github.com, such as `github-oauth` in `auth.json`, wins over both
 ([which credentials](https://lockrot.dev/internals/#which-credentials)). An input that is empty or `false` passes
 nothing, so the next source decides: `dev: false` leaves `extra.lockrot.include-dev: true` in
-effect.
+effect. `format` is the exception. The action needs the format to name, print and rewrite the
+report, so it always passes `--format`, and an empty `format` runs `github`.
 
 ## Outputs
 
 | Output | Meaning |
 |---|---|
-| `exit-code` | lockrot's exit code, also when the step fails |
-| `report` | Path of the report file in the requested format |
+| `exit-code` | lockrot's exit code, also when the step fails. Empty when the action fails before lockrot runs, for example on a failed download or sha256 check, an unknown `format`, a line break in an input or a missing lock |
+| `report` | Path of the report file in the requested format. Without `output`, each step gets a path of its own |
 | `version` | The lockrot version that ran |
 | `cache-hit` | `true` when the metadata cache was restored from the exact key |
 
@@ -232,18 +233,30 @@ discarded when the job ends, so on its own the file goes nowhere.
 
 ### A project in a subdirectory
 
+For a project in `apps/api`, keep the default `working-directory` and name the manifest in
+`COMPOSER`:
+
 ```yaml
 - uses: somework/lockrot-action@v1
+  env:
+    COMPOSER: apps/api/composer.json
   with:
-    working-directory: apps/api
     target-php: '8.4'
+    format: sarif
+    output: lockrot.sarif
 ```
 
-Annotations are rewritten to `apps/api/composer.lock` so they land on the right file. SARIF is
-not rewritten. lockrot names the lock relative to the directory that it ran in, and code scanning
-reads a relative path against the root of the repository
+lockrot then runs from the root of the repository and reads `apps/api/composer.lock`. SARIF,
+annotations and gitlab output name that path, so code scanning puts each alert on that lock. The
+setup step requires the same lock and the cache key hashes it. lockrot reads `extra.lockrot` and
+the baseline next to `apps/api/composer.json`.
+
+With `working-directory: apps/api` instead, the action rewrites annotations to
+`apps/api/composer.lock`. SARIF and gitlab output are not rewritten. lockrot names the lock
+relative to the directory that it ran in, and code scanning reads a relative path against the root
+of the repository
 ([SARIF support for code scanning](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/sarif-support-for-code-scanning)).
-So a subdirectory project's alerts point at `composer.lock` in the root.
+So the alerts of that setup point at `composer.lock` in the root.
 
 ### macOS and self-hosted runners
 

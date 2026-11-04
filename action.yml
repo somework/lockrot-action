@@ -44,13 +44,17 @@ inputs:
     required: false
     default: ''
   format:
-    description: 'Report format: github (annotations), table, json, sarif, gitlab, markdown or html.'
+    description: >-
+      Report format: github (annotations), table, json, sarif, gitlab, markdown or html. Empty
+      runs github. The action always passes --format, because it names, prints and rewrites the
+      report by its format, so extra.lockrot.format does not apply.
     required: false
     default: github
   output:
     description: >-
-      Where to write the report, relative to the workspace or absolute. Empty keeps it under
-      RUNNER_TEMP. Either way the path is the report output. From lockrot 0.13.0 the action
+      Where to write the report, relative to the workspace or absolute. Empty keeps it in a
+      directory of the step's own under RUNNER_TEMP, so a later step of the job does not replace
+      it. Either way the path is the report output. From lockrot 0.13.0 the action
       passes it as --output. lockrot then refuses composer.json, composer.lock and the baseline
       there with exit 2, and writes nothing. With --explain in args, or with an older lockrot, the
       action copies stdout to the path after a run that exits 0 or 1, and nothing refuses those
@@ -68,12 +72,17 @@ inputs:
   strict-network:
     description: >-
       Exit 1 when a run note counts as a network failure (--strict-network). Such a note says
-      that a Composer repository or a repository host (GitHub, GitLab, Bitbucket) did not answer.
-      An offline run that finds no cached metadata for a locked package writes one too.
+      that lockrot could not read what it asked for, for one of these causes. A Composer
+      repository or a repository host (GitHub, GitLab, Bitbucket) did not answer or stopped at a
+      rate limit. A repository lists a locked package but returned no versions of it. An offline
+      run found no cached metadata for a locked package. The install-time budget ran out. See
+      https://lockrot.dev/notes/#metadata_unavailable.
     required: false
     default: 'false'
   baseline:
-    description: Baseline file to read, relative to composer.json (--baseline). Empty uses extra.lockrot.baseline or lockrot-baseline.json.
+    description: >-
+      Baseline file to read, relative to composer.json (--baseline). When empty, an
+      extra.lockrot.baseline in composer.json replaces the default file lockrot-baseline.json.
     required: false
     default: ''
   generate-baseline:
@@ -134,10 +143,14 @@ outputs:
     description: >-
       lockrot exit code. 0: no finding failed fail-on, and strict-network did not trip. 1: a
       finding failed fail-on, or strict-network tripped. 2: lockrot could not run or finish, for
-      an input, configuration or usage error, or a file that it could not write.
+      an input, configuration or usage error, or a file that it could not write. Empty when the
+      action fails before lockrot runs, for example on a failed download or sha256 check, an
+      unknown format, a line break in an input or a missing lock.
     value: ${{ steps.run.outputs.exit-code }}
   report:
-    description: Path of the report file in the requested format.
+    description: >-
+      Path of the report file in the requested format. Without the output input, each step gets
+      a path of its own.
     value: ${{ steps.run.outputs.report }}
   version:
     description: The lockrot version that ran.
