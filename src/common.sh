@@ -184,6 +184,8 @@ rewrite_annotation_paths() {
   # $1 report file, $2 working directory relative to the workspace, $3 the run's scratch directory,
   # which holds the rewritten copy so that nothing is written beside the user's report. The copy
   # goes back through `cat`, not `mv`, so the report keeps its own mode instead of mktemp's 0600.
+  # The copy stays in the scratch directory, which its owner removes, so the status of the rewrite
+  # is the function's status.
   local dir=$2 escaped lock root rewritten
   dir=${dir#./}
   dir=${dir%/}
@@ -205,7 +207,6 @@ rewrite_annotation_paths() {
   rewritten=$(mktemp "${3:?the scratch directory is not set}/annotations.XXXXXX")
   sed -e "s/^\(::[a-z]* file=\)\(${lock}\),/\1${escaped}\/\2,/" "$1" > "$rewritten" \
     && cat "$rewritten" > "$1"
-  rm -f "$rewritten"
 }
 
 report_extension() {
