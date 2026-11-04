@@ -18,7 +18,10 @@ inputs:
     required: false
     default: ''
   working-directory:
-    description: Directory that holds composer.json and composer.lock, relative to the workspace.
+    description: >-
+      Directory where lockrot runs, relative to the workspace. It holds composer.json and
+      composer.lock, unless COMPOSER names another manifest. COMPOSER is read relative to this
+      directory.
     required: false
     default: '.'
   fail-on:
@@ -44,13 +47,17 @@ inputs:
     required: false
     default: ''
   format:
-    description: 'Report format: github (annotations), table, json, sarif, gitlab, markdown or html.'
+    description: >-
+      Report format: github (annotations), table, json, sarif, gitlab, markdown or html. Empty
+      runs github. The action always passes --format, because it names, prints and rewrites the
+      report by its format, so extra.lockrot.format does not apply.
     required: false
     default: github
   output:
     description: >-
-      Where to write the report, relative to the workspace or absolute. Empty keeps it under
-      RUNNER_TEMP. Either way the path is the report output. From lockrot 0.13.0 the action
+      Where to write the report, relative to the workspace or absolute. Empty keeps it in a
+      directory of the step's own under RUNNER_TEMP, so a later step of the job does not replace
+      it. Either way the path is the report output. From lockrot 0.13.0 the action
       passes it as --output. lockrot then refuses composer.json, composer.lock and the baseline
       there with exit 2, and writes nothing. With --explain in args, or with an older lockrot, the
       action copies stdout to the path after a run that exits 0 or 1, and nothing refuses those
@@ -68,12 +75,17 @@ inputs:
   strict-network:
     description: >-
       Exit 1 when a run note counts as a network failure (--strict-network). Such a note says
-      that a Composer repository or a repository host (GitHub, GitLab, Bitbucket) did not answer.
-      An offline run that finds no cached metadata for a locked package writes one too.
+      that lockrot could not read what it asked for. A Composer repository or a repository host
+      (GitHub, GitLab, Bitbucket) did not answer, answered with an error or stopped at a rate
+      limit. A repository can also list a locked package but return no versions of it. An offline
+      run that finds no cached metadata for a locked package writes such a note too. See
+      https://lockrot.dev/notes/.
     required: false
     default: 'false'
   baseline:
-    description: Baseline file to read, relative to composer.json (--baseline). Empty uses extra.lockrot.baseline or lockrot-baseline.json.
+    description: >-
+      Baseline file to read, relative to composer.json (--baseline). When empty, an
+      extra.lockrot.baseline in composer.json replaces the default file lockrot-baseline.json.
     required: false
     default: ''
   generate-baseline:
@@ -134,10 +146,14 @@ outputs:
     description: >-
       lockrot exit code. 0: no finding failed fail-on, and strict-network did not trip. 1: a
       finding failed fail-on, or strict-network tripped. 2: lockrot could not run or finish, for
-      an input, configuration or usage error, or a file that it could not write.
+      an input, configuration or usage error, or a file that it could not write. Empty when the
+      action fails before it sets the output. Examples are a failed download or sha256 check, an
+      unknown format, a line break in an input and a missing lock.
     value: ${{ steps.run.outputs.exit-code }}
   report:
-    description: Path of the report file in the requested format.
+    description: >-
+      Path of the report file in the requested format. Without the output input, each step gets
+      a path of its own.
     value: ${{ steps.run.outputs.report }}
   version:
     description: The lockrot version that ran.

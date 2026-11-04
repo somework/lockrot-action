@@ -37,7 +37,8 @@ main() {
   [ "$actual" = "$expected" ] || fail "lockrot.phar changed after it was verified (sha256 ${actual}, verified ${expected}); nothing will run"
   work_dir=$(native_path "$(trim "${INPUT_WORKING_DIRECTORY:-.}")")
   [ -n "$work_dir" ] || work_dir=.
-  format=$(trim "${INPUT_FORMAT:-github}")
+  format=$(trim "${INPUT_FORMAT:-}")
+  [ -n "$format" ] || format=github
   case "$format" in
     table|json|github|sarif|gitlab|markdown|html) ;;
     *) fail "format '${format}' is not one of table, json, github, sarif, gitlab, markdown, html" ;;
@@ -88,8 +89,12 @@ main() {
       *) report="$(native_path "${GITHUB_WORKSPACE:-$PWD}")/${report}" ;;
     esac
   else
-    report="${temp_dir}/report.$(report_extension "$format")"
-    rm -f "$report"
+    # A directory of this step's own: a later step of the job must not replace this report. Mode
+    # 755 as for RUNNER_TEMP/lockrot, so a later step that runs as another user can read it.
+    local step_dir
+    step_dir=$(mktemp -d "${temp_dir}/step.XXXXXX") || fail "could not make a report directory in ${temp_dir}"
+    chmod 755 "$step_dir" || fail "could not make the report directory ${step_dir} readable"
+    report="${step_dir}/report.$(report_extension "$format")"
   fi
   mkdir -p "$(dirname "$report")"
   # From lockrot 0.13.0 the report goes through --output, so lockrot refuses a target such as
@@ -147,7 +152,7 @@ main() {
   local code=0
   (cd "$work_dir" && php "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
 
-  [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir"
+  [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir" || rewrite_failed "$stdout_file" "$code"
   case "$format" in
     github|table|markdown) cat "$stdout_file" ;;
   esac
@@ -156,7 +161,7 @@ main() {
   if [ "$report_by_output" = true ]; then
     if [ -f "$report" ] && [ "$(file_id "$report")" != "$report_id" ]; then
       report_written=true
-      [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir"
+      [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir" || rewrite_failed "$report" "$code"
     fi
   elif [ "$code" -le 1 ]; then
     cp "$stdout_file" "$report"
@@ -187,6 +192,13 @@ main() {
 
   set_output exit-code "$code"
   set_output report "$report"
+}
+
+# $1 the file, $2 lockrot's exit code. The exit-code output comes first, so a later step that
+# reads it still gets lockrot's code from a step that failed here.
+rewrite_failed() {
+  set_output exit-code "$2"
+  fail "could not rewrite the annotation paths in $1"
 }
 
 # The file id of $1 itself, not of a symlink's target.

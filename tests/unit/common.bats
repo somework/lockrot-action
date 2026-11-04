@@ -80,6 +80,25 @@ teardown() { teardown_scratch; }
   [ "$(sed -n 3p "$SCRATCH/r")" = "::notice::note" ]
 }
 
+@test "rewrite_annotation_paths returns non-zero when it cannot read the report" {
+  printf '::error file=composer.lock,line=8::m\n' > "$SCRATCH/r"
+  chmod 000 "$SCRATCH/r"
+  run rewrite_annotation_paths "$SCRATCH/r" app
+  chmod 644 "$SCRATCH/r"
+  [ "$status" -ne 0 ]
+  [ "$(cat "$SCRATCH/r")" = "::error file=composer.lock,line=8::m" ]
+  [ -z "$(ls -A "$SCRATCH" | grep -v '^r$')" ]
+}
+
+@test "rewrite_annotation_paths replaces a read-only report and keeps its mode" {
+  printf '::error file=composer.lock,line=8::m\n' > "$SCRATCH/r"
+  chmod 444 "$SCRATCH/r"
+  rewrite_annotation_paths "$SCRATCH/r" app
+  [ "$(cat "$SCRATCH/r")" = "::error file=app/composer.lock,line=8::m" ]
+  [ "$(ls -l "$SCRATCH/r" | cut -c1-10)" = "-r--r--r--" ]
+  [ -z "$(ls -A "$SCRATCH" | grep -v '^r$')" ]
+}
+
 @test "rewrite_annotation_paths is a no-op for the workspace root" {
   printf '::error file=composer.lock,line=8::m\n' > "$SCRATCH/r"
   rewrite_annotation_paths "$SCRATCH/r" "."
