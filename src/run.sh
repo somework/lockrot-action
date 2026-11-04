@@ -88,8 +88,8 @@ main() {
       *) report="$(native_path "${GITHUB_WORKSPACE:-$PWD}")/${report}" ;;
     esac
   else
-    report="${temp_dir}/report.$(report_extension "$format")"
-    rm -f "$report"
+    # A directory of this step's own: a later step of the job must not replace this report.
+    report="$(mktemp -d "${temp_dir}/step.XXXXXX")/report.$(report_extension "$format")"
   fi
   mkdir -p "$(dirname "$report")"
   # From lockrot 0.13.0 the report goes through --output, so lockrot refuses a target such as
@@ -147,7 +147,7 @@ main() {
   local code=0
   (cd "$work_dir" && php "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
 
-  [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir"
+  [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir" "$SCRATCH_DIR"
   case "$format" in
     github|table|markdown) cat "$stdout_file" ;;
   esac
@@ -156,7 +156,7 @@ main() {
   if [ "$report_by_output" = true ]; then
     if [ -f "$report" ] && [ "$(file_id "$report")" != "$report_id" ]; then
       report_written=true
-      [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir"
+      [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir" "$SCRATCH_DIR"
     fi
   elif [ "$code" -le 1 ]; then
     cp "$stdout_file" "$report"

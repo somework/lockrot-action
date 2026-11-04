@@ -74,7 +74,7 @@ teardown() { teardown_scratch; }
 
 @test "rewrite_annotation_paths prefixes the working directory and leaves other lines alone" {
   printf '::error file=composer.lock,line=8,title=t::m\nplain line file=composer.lock,\n::notice::note\n' > "$SCRATCH/r"
-  rewrite_annotation_paths "$SCRATCH/r" "./apps/web/"
+  rewrite_annotation_paths "$SCRATCH/r" "./apps/web/" "$SCRATCH"
   [ "$(sed -n 1p "$SCRATCH/r")" = "::error file=apps/web/composer.lock,line=8,title=t::m" ]
   [ "$(sed -n 2p "$SCRATCH/r")" = "plain line file=composer.lock," ]
   [ "$(sed -n 3p "$SCRATCH/r")" = "::notice::note" ]
@@ -82,44 +82,44 @@ teardown() { teardown_scratch; }
 
 @test "rewrite_annotation_paths is a no-op for the workspace root" {
   printf '::error file=composer.lock,line=8::m\n' > "$SCRATCH/r"
-  rewrite_annotation_paths "$SCRATCH/r" "."
+  rewrite_annotation_paths "$SCRATCH/r" "." "$SCRATCH"
   [ "$(cat "$SCRATCH/r")" = "::error file=composer.lock,line=8::m" ]
-  rewrite_annotation_paths "$SCRATCH/r" "./"
+  rewrite_annotation_paths "$SCRATCH/r" "./" "$SCRATCH"
   [ "$(cat "$SCRATCH/r")" = "::error file=composer.lock,line=8::m" ]
 }
 
 @test "rewrite_annotation_paths prefixes the lock that COMPOSER names" {
   printf '::error file=alt.lock,line=8,title=t::m\n::warning file=composer.lock,line=2::m\n' > "$SCRATCH/r"
-  COMPOSER=alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web
+  COMPOSER=alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web "$SCRATCH"
   [ "$(sed -n 1p "$SCRATCH/r")" = "::error file=apps/web/alt.lock,line=8,title=t::m" ]
   [ "$(sed -n 2p "$SCRATCH/r")" = "::warning file=composer.lock,line=2::m" ]
 }
 
 @test "rewrite_annotation_paths matches the lock name literally, not as a pattern" {
   printf '::error file=altXlock,line=1::m\n::error file=alt.lock,line=2::m\n' > "$SCRATCH/r"
-  COMPOSER=alt.json rewrite_annotation_paths "$SCRATCH/r" app
+  COMPOSER=alt.json rewrite_annotation_paths "$SCRATCH/r" app "$SCRATCH"
   [ "$(sed -n 1p "$SCRATCH/r")" = "::error file=altXlock,line=1::m" ]
   [ "$(sed -n 2p "$SCRATCH/r")" = "::error file=app/alt.lock,line=2::m" ]
 }
 
 @test "rewrite_annotation_paths prefixes a lock that an absolute COMPOSER names inside the working directory" {
   printf '::error file=alt.lock,line=1::m\n' > "$SCRATCH/r"
-  GITHUB_WORKSPACE=/w COMPOSER=/w/apps/web/alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web
+  GITHUB_WORKSPACE=/w COMPOSER=/w/apps/web/alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web "$SCRATCH"
   [ "$(cat "$SCRATCH/r")" = "::error file=apps/web/alt.lock,line=1::m" ]
 }
 
 @test "rewrite_annotation_paths leaves the annotation alone for an absolute COMPOSER outside the working directory" {
   printf '::error file=alt.lock,line=1::m\n' > "$SCRATCH/r"
-  GITHUB_WORKSPACE=/w COMPOSER=/elsewhere/alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web
+  GITHUB_WORKSPACE=/w COMPOSER=/elsewhere/alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web "$SCRATCH"
   [ "$(cat "$SCRATCH/r")" = "::error file=alt.lock,line=1::m" ]
 }
 
 @test "rewrite_annotation_paths matches a COMPOSER with backslashes or doubled slashes as lockrot writes it" {
   printf '::error file=sub/alt.lock,line=1::m\n' > "$SCRATCH/r"
-  COMPOSER='sub\alt.json' rewrite_annotation_paths "$SCRATCH/r" app
+  COMPOSER='sub\alt.json' rewrite_annotation_paths "$SCRATCH/r" app "$SCRATCH"
   [ "$(cat "$SCRATCH/r")" = "::error file=app/sub/alt.lock,line=1::m" ]
   printf '::error file=sub/alt.lock,line=1::m\n' > "$SCRATCH/r"
-  COMPOSER='.//sub/.//alt.json' rewrite_annotation_paths "$SCRATCH/r" app
+  COMPOSER='.//sub/.//alt.json' rewrite_annotation_paths "$SCRATCH/r" app "$SCRATCH"
   [ "$(cat "$SCRATCH/r")" = "::error file=app/sub/alt.lock,line=1::m" ]
 }
 
@@ -142,16 +142,16 @@ teardown() { teardown_scratch; }
 
 @test "rewrite_annotation_paths copes with sed-special characters in the directory" {
   printf '::warning file=composer.lock,line=1::m\n' > "$SCRATCH/r"
-  rewrite_annotation_paths "$SCRATCH/r" 'a&b/c'
+  rewrite_annotation_paths "$SCRATCH/r" 'a&b/c' "$SCRATCH"
   [ "$(cat "$SCRATCH/r")" = "::warning file=a&b/c/composer.lock,line=1::m" ]
 }
 
 @test "rewrite_annotation_paths escapes the directory and matches the lock as workflow-command properties" {
   printf '::warning file=composer.lock,line=1::m\n' > "$SCRATCH/r"
-  rewrite_annotation_paths "$SCRATCH/r" 'a,b:c%d'
+  rewrite_annotation_paths "$SCRATCH/r" 'a,b:c%d' "$SCRATCH"
   [ "$(cat "$SCRATCH/r")" = "::warning file=a%2Cb%3Ac%25d/composer.lock,line=1::m" ]
   printf '::error file=x%%2Cy%%3Az%%25.lock,line=2::m\n' > "$SCRATCH/r"
-  COMPOSER='x,y:z%.json' rewrite_annotation_paths "$SCRATCH/r" app
+  COMPOSER='x,y:z%.json' rewrite_annotation_paths "$SCRATCH/r" app "$SCRATCH"
   [ "$(cat "$SCRATCH/r")" = "::error file=app/x%2Cy%3Az%25.lock,line=2::m" ]
 }
 

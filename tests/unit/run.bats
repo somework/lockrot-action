@@ -15,16 +15,19 @@ setup() {
 teardown() { teardown_scratch; }
 
 run_run() { run bash "$GITHUB_ACTION_PATH/src/run.sh"; }
-# The action's scratch directory has a random name; it reads as run/ here.
-main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -- '--format=markdown' | head -n 1 | sed -e "s#/lockrot/run\.[A-Za-z0-9]*/#/lockrot/run/#g"; }
+# The action's scratch directory and the default report directory have random names; they read as
+# run/ and step/ here.
+random_dirs() { sed -e "s#/lockrot/run\.[A-Za-z0-9]*/#/lockrot/run/#g" -e "s#/lockrot/step\.[A-Za-z0-9]*/#/lockrot/step/#g"; }
+main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -- '--format=markdown' | head -n 1 | random_dirs; }
+report_value() { output_value report | random_dirs; }
 
 @test "options are passed through and the exit code becomes an output, not a failure" {
   export INPUT_FAIL_ON=silent INPUT_TARGET_PHP=8.4 INPUT_DEV=true INPUT_ALL=yes INPUT_STRICT_NETWORK=1 INPUT_BASELINE=b.json INPUT_ARGS='--foo --bar=1' PHP_STUB_EXIT=1
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --fail-on=silent --target-php=8.4 --baseline=b.json --dev --all --strict-network --foo --bar=1 --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --fail-on=silent --target-php=8.4 --baseline=b.json --dev --all --strict-network --foo --bar=1 --output=github:$RUNNER_TEMP/lockrot/step/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
   [ "$(output_value exit-code)" = "1" ]
-  [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.txt" ]
+  [ "$(report_value)" = "$RUNNER_TEMP/lockrot/step/report.txt" ]
   [[ "$output" == *"running lockrot 9.9.9: --format=github --fail-on=silent"* ]]
 }
 
@@ -32,14 +35,14 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_FAIL_ON=' left-behind,vulnerable-high,unchecked '
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --fail-on=left-behind,vulnerable-high,unchecked --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --fail-on=left-behind,vulnerable-high,unchecked --output=github:$RUNNER_TEMP/lockrot/step/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
 }
 
 @test "github annotations are printed with the working directory prepended" {
   run_run
   [ "$status" -eq 0 ]
   [[ "$output" == *"::warning file=project/composer.lock,line=12,title=lockrot%3A silent (critical)::acme/pkg 1.0.0: stub evidence"* ]]
-  grep -q '^::warning file=project/composer.lock,' "$RUNNER_TEMP/lockrot/report.txt"
+  grep -q '^::warning file=project/composer.lock,' "$(output_value report)"
 }
 
 @test "the summary is the same run's markdown report, written through --output, notes as written" {
@@ -60,7 +63,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [ "$status" -eq 0 ]
   ! grep -q -- '--output=' "$PHP_STUB_LOG"
   grep -q -- "$LOCKROT_PHAR lockrot --format=markdown --offline --fail-on=silent --target-php=8.4" "$PHP_STUB_LOG"
-  [ -s "$RUNNER_TEMP/lockrot/report.txt" ]
+  [ -s "$(output_value report)" ]
   [ "$(sed -n 1p "$GITHUB_STEP_SUMMARY")" = "### lockrot: stub summary" ]
   ! grep -q 'offline: repository metadata' "$GITHUB_STEP_SUMMARY"
   grep -q -- '- note: kept' "$GITHUB_STEP_SUMMARY"
@@ -72,7 +75,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [ "$status" -eq 0 ]
   [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=table --explain=acme/pkg" ]
   ! grep -q -- '--format=markdown' "$PHP_STUB_LOG"
-  [ -s "$RUNNER_TEMP/lockrot/report.txt" ]
+  [ -s "$(output_value report)" ]
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
   [ "$(output_value exit-code)" = "0" ]
 }
@@ -87,7 +90,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [ "$status" -eq 0 ]
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
   [ "$(output_value exit-code)" = "0" ]
-  [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.txt" ]
+  [ "$(report_value)" = "$RUNNER_TEMP/lockrot/step/report.txt" ]
 }
 
 @test "a summary file left by an earlier step is not published when this run writes none" {
@@ -106,7 +109,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_SUMMARY=false
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --output=github:$RUNNER_TEMP/lockrot/report.txt" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --output=github:$RUNNER_TEMP/lockrot/step/report.txt" ]
 }
 
 @test "a markdown run feeds the summary directly" {
@@ -115,7 +118,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   [ "$status" -eq 0 ]
   [ "$(grep -c -- '--format=markdown' "$PHP_STUB_LOG")" -eq 1 ]
   grep -q '### lockrot: stub summary' "$GITHUB_STEP_SUMMARY"
-  [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.md" ]
+  [ "$(report_value)" = "$RUNNER_TEMP/lockrot/step/report.md" ]
 }
 
 @test "the summary is skipped for summary=false, generate-baseline and a failed run" {
@@ -157,11 +160,11 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_FORMAT=html
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=html --output=html:$RUNNER_TEMP/lockrot/report.html --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=html --output=html:$RUNNER_TEMP/lockrot/step/report.html --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
   [[ "$output" != *"::warning file="* ]]
-  [ "$(output_value report)" = "$RUNNER_TEMP/lockrot/report.html" ]
-  [[ "$output" == *"html report written to $RUNNER_TEMP/lockrot/report.html"* ]]
-  [ -s "$RUNNER_TEMP/lockrot/report.html" ]
+  [ "$(report_value)" = "$RUNNER_TEMP/lockrot/step/report.html" ]
+  [[ "$output" == *"html report written to $(output_value report)"* ]]
+  [ -s "$(output_value report)" ]
 }
 
 @test "an absolute output path is kept" {
@@ -236,7 +239,7 @@ main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -
   export INPUT_ARGS='--all *'
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --all * --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --all * --output=github:$RUNNER_TEMP/lockrot/step/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
 }
 
 @test "a line break in an input is refused before anything runs" {
@@ -266,6 +269,7 @@ exit-code=0"
   run_run
   [ "$status" -eq 1 ]
   [[ "$output" == *"format 'xml' is not one of"* ]]
+  [ -z "$(output_value exit-code)" ]
 }
 
 @test "an archive reporting another version is refused" {
@@ -312,24 +316,103 @@ exit-code=0"
   [ "$(output_value exit-code)" = "2" ]
 }
 
-@test "a default report file left by an earlier step is removed before the run" {
+@test "a default report path names no file when lockrot wrote none" {
   export INPUT_FORMAT=sarif
-  printf 'stale\n' > "$RUNNER_TEMP/lockrot/report.sarif"
   mkdir -p "$SCRATCH/bin"
   printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
   [ "$status" -eq 0 ]
-  [ ! -e "$RUNNER_TEMP/lockrot/report.sarif" ]
+  [ "$(report_value)" = "$RUNNER_TEMP/lockrot/step/report.sarif" ]
+  [ ! -e "$(output_value report)" ]
+}
+
+@test "two steps in one job keep their own default report, so the later one leaves the earlier one alone" {
+  # Arrange: two projects, and a lockrot that writes the name of the project it ran in.
+  export INPUT_FORMAT=markdown
+  mkdir -p "$GITHUB_WORKSPACE/other" "$SCRATCH/bin"
+  printf '{}\n' > "$GITHUB_WORKSPACE/other/composer.json"
+  printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/other/composer.lock"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=*:*) printf "report of %%s\\n" "${PWD##*/}" > "${a#--output=*:}";; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+
+  # Act: step a, then step b, each with its own GITHUB_OUTPUT as on a runner.
+  export INPUT_WORKING_DIRECTORY=project GITHUB_OUTPUT="$SCRATCH/output-a"
+  run_run
+  [ "$status" -eq 0 ]
+  local report_a
+  report_a=$(output_value report)
+  export INPUT_WORKING_DIRECTORY=other GITHUB_OUTPUT="$SCRATCH/output-b"
+  run_run
+  [ "$status" -eq 0 ]
+  local report_b
+  report_b=$(output_value report)
+
+  # Assert
+  [ "$report_a" != "$report_b" ]
+  [ "$(cat "$report_a")" = "report of project" ]
+  [ "$(cat "$report_b")" = "report of other" ]
+}
+
+@test "the github annotation rewrite leaves a file named <output>.tmp beside the report alone" {
+  export INPUT_OUTPUT=reports/lockrot.txt
+  mkdir -p "$GITHUB_WORKSPACE/reports"
+  printf 'user data\n' > "$GITHUB_WORKSPACE/reports/lockrot.txt.tmp"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(cat "$GITHUB_WORKSPACE/reports/lockrot.txt.tmp")" = "user data" ]
+  grep -q '^::warning file=project/composer.lock,' "$GITHUB_WORKSPACE/reports/lockrot.txt"
+}
+
+@test "the github annotation rewrite keeps the file mode that the report was written with" {
+  umask 022
+  export INPUT_OUTPUT=reports/lockrot.txt
+  run_run
+  [ "$status" -eq 0 ]
+  grep -q '^::warning file=project/composer.lock,' "$GITHUB_WORKSPACE/reports/lockrot.txt"
+  [ "$(ls -l "$GITHUB_WORKSPACE/reports/lockrot.txt" | cut -c1-10)" = "-rw-r--r--" ]
+}
+
+@test "the github annotation rewrite succeeds beside a directory named <output>.tmp" {
+  export INPUT_OUTPUT=reports/lockrot.txt
+  mkdir -p "$GITHUB_WORKSPACE/reports/lockrot.txt.tmp"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(output_value exit-code)" = "0" ]
+  [ "$(output_value report)" = "$GITHUB_WORKSPACE/reports/lockrot.txt" ]
+  [ -d "$GITHUB_WORKSPACE/reports/lockrot.txt.tmp" ]
+  grep -q '^::warning file=project/composer.lock,' "$GITHUB_WORKSPACE/reports/lockrot.txt"
+}
+
+@test "a COMPOSER that names a subdirectory manifest from the root keeps lockrot's lock path in the annotations" {
+  # The README subdirectory recipe: working-directory stays `.`, and lockrot names the lock
+  # apps/api/composer.lock itself, so the action adds no prefix.
+  export INPUT_WORKING_DIRECTORY=. COMPOSER=apps/api/composer.json
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=github:*) printf "::warning file=apps/api/composer.lock,line=3::m\\n" > "${a#--output=github:}";; esac; done\nprintf "::warning file=apps/api/composer.lock,line=3::m\\n"\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::warning file=apps/api/composer.lock,line=3::m"* ]]
+  [ "$(cat "$(output_value report)")" = "::warning file=apps/api/composer.lock,line=3::m" ]
+}
+
+@test "an empty format input runs lockrot with --format=github" {
+  export INPUT_FORMAT=
+  run_run
+  [ "$status" -eq 0 ]
+  main_call | grep -q -- '^[^ ]* lockrot --format=github '
 }
 
 @test "generate-baseline writes the report through --output, since stdout stays empty" {
   export INPUT_GENERATE_BASELINE=true
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --generate-baseline --output=github:$RUNNER_TEMP/lockrot/report.txt" ]
-  [ -s "$RUNNER_TEMP/lockrot/report.txt" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --generate-baseline --output=github:$RUNNER_TEMP/lockrot/step/report.txt" ]
+  [ -s "$(output_value report)" ]
 }
 
 @test "a markdown run's summary keeps the run's own offline note" {
@@ -356,14 +439,14 @@ exit-code=0"
   export INPUT_ARGS='--markdown-max-bytes 65536'
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --markdown-max-bytes 65536 --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --markdown-max-bytes 65536 --output=github:$RUNNER_TEMP/lockrot/step/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md" ]
 }
 
 @test "lockrot 0.13 gets no --markdown-max-bytes, which it does not know" {
   export LOCKROT_VERSION=0.13.0 PHP_STUB_VERSION=0.13.0
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --output=github:$RUNNER_TEMP/lockrot/step/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md" ]
 }
 
 @test "a release candidate of lockrot 0.14.0 gets the summary cap" {
@@ -381,7 +464,7 @@ exit-code=0"
   run_run
   [ "$status" -eq 0 ]
   [ "$(output_value exit-code)" = "0" ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --output=github:$RUNNER_TEMP/lockrot/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=github --output=github:$RUNNER_TEMP/lockrot/step/report.txt --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
 }
 
 @test "a version check that fails names what php wrote on stderr" {

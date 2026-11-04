@@ -181,8 +181,10 @@ escape_property() {
 # `file=composer.lock` in a workflow command names the file relative to the checkout root, so a
 # project in a subdirectory needs the directory prepended for the annotation to land on its lock.
 rewrite_annotation_paths() {
-  # $1 report file, $2 working directory relative to the workspace
-  local dir=$2 escaped lock root
+  # $1 report file, $2 working directory relative to the workspace, $3 the run's scratch directory,
+  # which holds the rewritten copy so that nothing is written beside the user's report. The copy
+  # goes back through `cat`, not `mv`, so the report keeps its own mode instead of mktemp's 0600.
+  local dir=$2 escaped lock root rewritten
   dir=${dir#./}
   dir=${dir%/}
   [ -n "$dir" ] && [ "$dir" != "." ] || return 0
@@ -200,8 +202,10 @@ rewrite_annotation_paths() {
       ;;
   esac
   lock=$(escape_property "$lock" | sed -e 's/[]\/$*.^[]/\\&/g')
-  sed -e "s/^\(::[a-z]* file=\)\(${lock}\),/\1${escaped}\/\2,/" "$1" > "$1.tmp" \
-    && mv "$1.tmp" "$1"
+  rewritten=$(mktemp "${3:?the scratch directory is not set}/annotations.XXXXXX")
+  sed -e "s/^\(::[a-z]* file=\)\(${lock}\),/\1${escaped}\/\2,/" "$1" > "$rewritten" \
+    && cat "$rewritten" > "$1"
+  rm -f "$rewritten"
 }
 
 report_extension() {

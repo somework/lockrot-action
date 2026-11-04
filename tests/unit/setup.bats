@@ -134,6 +134,17 @@ evil=1"
   [ "$(output_value lock-hash)" = "$expected_hash" ]
 }
 
+@test "a COMPOSER that names a subdirectory manifest from the root checks and hashes that subdirectory's lock" {
+  mkdir -p "$GITHUB_WORKSPACE/apps/api"
+  printf '{}\n' > "$GITHUB_WORKSPACE/apps/api/composer.json"
+  printf '{"packages": ["api"]}\n' > "$GITHUB_WORKSPACE/apps/api/composer.lock"
+  expected_hash=$(shasum -a 256 "$GITHUB_WORKSPACE/apps/api/composer.lock" | cut -c1-16)
+  export INPUT_WORKING_DIRECTORY=. COMPOSER=apps/api/composer.json
+  run_setup
+  [ "$status" -eq 0 ]
+  [ "$(output_value lock-hash)" = "$expected_hash" ]
+}
+
 @test "a missing lock that COMPOSER names is reported by that name" {
   export COMPOSER=alt.json
   run_setup
