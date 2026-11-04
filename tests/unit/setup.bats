@@ -145,6 +145,17 @@ evil=1"
   [ "$(output_value lock-hash)" = "$expected_hash" ]
 }
 
+@test "a COMPOSER path that repeats working-directory names the doubled lock path in the setup error" {
+  mkdir -p "$GITHUB_WORKSPACE/apps/api"
+  printf '{}\n' > "$GITHUB_WORKSPACE/apps/api/composer.json"
+  printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/apps/api/composer.lock"
+  export INPUT_WORKING_DIRECTORY=apps/api COMPOSER=apps/api/composer.json
+  run_setup
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::lockrot-action: no apps/api/composer.lock in 'apps/api' (working-directory): apps/api/apps/api/composer.lock does not exist. COMPOSER is relative to working-directory"* ]] || false
+  [ ! -s "$CURL_STUB_LOG" ]
+}
+
 @test "a missing lock that COMPOSER names is reported by that name" {
   export COMPOSER=alt.json
   run_setup

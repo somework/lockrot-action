@@ -92,8 +92,8 @@ main() {
     # A directory of this step's own: a later step of the job must not replace this report. Mode
     # 755 as for RUNNER_TEMP/lockrot, so a later step that runs as another user can read it.
     local step_dir
-    step_dir=$(mktemp -d "${temp_dir}/step.XXXXXX")
-    chmod 755 "$step_dir"
+    step_dir=$(mktemp -d "${temp_dir}/step.XXXXXX") || fail "could not make a report directory in ${temp_dir}"
+    chmod 755 "$step_dir" || fail "could not make the report directory ${step_dir} readable"
     report="${step_dir}/report.$(report_extension "$format")"
   fi
   mkdir -p "$(dirname "$report")"
@@ -152,7 +152,7 @@ main() {
   local code=0
   (cd "$work_dir" && php "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
 
-  [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir" "$SCRATCH_DIR"
+  [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir" || rewrite_failed "$stdout_file" "$code"
   case "$format" in
     github|table|markdown) cat "$stdout_file" ;;
   esac
@@ -161,7 +161,7 @@ main() {
   if [ "$report_by_output" = true ]; then
     if [ -f "$report" ] && [ "$(file_id "$report")" != "$report_id" ]; then
       report_written=true
-      [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir" "$SCRATCH_DIR"
+      [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir" || rewrite_failed "$report" "$code"
     fi
   elif [ "$code" -le 1 ]; then
     cp "$stdout_file" "$report"
@@ -192,6 +192,13 @@ main() {
 
   set_output exit-code "$code"
   set_output report "$report"
+}
+
+# $1 the file, $2 lockrot's exit code. The exit-code output comes first, so a later step that
+# reads it still gets lockrot's code from a step that failed here.
+rewrite_failed() {
+  set_output exit-code "$2"
+  fail "could not rewrite the annotation paths in $1"
 }
 
 # The file id of $1 itself, not of a symlink's target.

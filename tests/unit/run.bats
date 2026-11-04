@@ -163,7 +163,7 @@ report_value() { output_value report | random_dirs; }
   [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=html --output=html:$RUNNER_TEMP/lockrot/step/report.html --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
   [[ "$output" != *"::warning file="* ]]
   [ "$(report_value)" = "$RUNNER_TEMP/lockrot/step/report.html" ]
-  [[ "$output" == *"html report written to $(output_value report)"* ]]
+  [[ "$output" == *"html report written to $(output_value report)"* ]] || false
   [ -s "$(output_value report)" ]
 }
 
@@ -375,6 +375,36 @@ exit-code=0"
   [ "$(ls -l "$GITHUB_WORKSPACE/reports/lockrot.txt" | cut -c1-10)" = "-rw-r--r--" ]
 }
 
+@test "the github annotation rewrite replaces a read-only report and keeps its mode" {
+  # Like lockrot, the stub replaces the report by a rename and carries the earlier mode, 0444 here.
+  export INPUT_OUTPUT=reports/lockrot.txt
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=github:*) t=${a#--output=github:}; printf "::warning file=composer.lock,line=3::m\\n" > "$t.new"; chmod 444 "$t.new"; mv -f "$t.new" "$t";; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(cat "$GITHUB_WORKSPACE/reports/lockrot.txt")" = "::warning file=project/composer.lock,line=3::m" ]
+  [ "$(ls -l "$GITHUB_WORKSPACE/reports/lockrot.txt" | cut -c1-10)" = "-r--r--r--" ]
+  [ "$(ls -A "$GITHUB_WORKSPACE/reports")" = "lockrot.txt" ]
+}
+
+@test "a github annotation rewrite that cannot write fails the step with an error and keeps the exit-code output" {
+  # The stub writes the report, then leaves its directory read-only, so no copy can go beside it.
+  export INPUT_OUTPUT=reports/lockrot.txt PHP_STUB_EXIT=1
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=github:*) t=${a#--output=github:}; printf "::warning file=composer.lock,line=3::m\\n" > "$t"; chmod 555 "${t%%/*}";; esac; done\nexit 1\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  chmod 755 "$GITHUB_WORKSPACE/reports"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::lockrot-action: could not rewrite the annotation paths in $GITHUB_WORKSPACE/reports/lockrot.txt"* ]] || false
+  [ "$(output_value exit-code)" = "1" ]
+  [ "$(cat "$GITHUB_WORKSPACE/reports/lockrot.txt")" = "::warning file=composer.lock,line=3::m" ]
+  [ "$(ls -A "$GITHUB_WORKSPACE/reports")" = "lockrot.txt" ]
+}
+
 @test "the github annotation rewrite succeeds beside a directory named <output>.tmp" {
   export INPUT_OUTPUT=reports/lockrot.txt
   mkdir -p "$GITHUB_WORKSPACE/reports/lockrot.txt.tmp"
@@ -396,7 +426,7 @@ exit-code=0"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"::warning file=apps/api/composer.lock,line=3::m"* ]]
+  [[ "$output" == *"::warning file=apps/api/composer.lock,line=3::m"* ]] || false
   [ "$(cat "$(output_value report)")" = "::warning file=apps/api/composer.lock,line=3::m" ]
 }
 
@@ -426,9 +456,21 @@ exit-code=0"
   chmod +x "$SCRATCH/bin/mktemp"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::lockrot-action: could not make a report directory in $RUNNER_TEMP/lockrot"* ]] || false
   [ -z "$(main_call)" ]
   [ -z "$(output_value report)" ]
+}
+
+@test "a default report directory that cannot get mode 755 stops the step with an error" {
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\ncase "$*" in *step.*) exit 1 ;; esac\nexec %s "$@"\n' "$(command -v chmod)" > "$SCRATCH/bin/chmod"
+  chmod +x "$SCRATCH/bin/chmod"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::lockrot-action: could not make the report directory $RUNNER_TEMP/lockrot/step."*" readable"* ]] || false
+  [ -z "$(main_call)" ]
 }
 
 @test "generate-baseline writes the report through --output, since stdout stays empty" {

@@ -181,11 +181,9 @@ escape_property() {
 # `file=composer.lock` in a workflow command names the file relative to the checkout root, so a
 # project in a subdirectory needs the directory prepended for the annotation to land on its lock.
 rewrite_annotation_paths() {
-  # $1 report file, $2 working directory relative to the workspace, $3 the run's scratch directory,
-  # which holds the rewritten copy so that nothing is written beside the user's report. The copy
-  # goes back through `cat`, not `mv`, so the report keeps its own mode instead of mktemp's 0600.
-  # The copy stays in the scratch directory, which its owner removes, so the status of the rewrite
-  # is the function's status.
+  # $1 report file, $2 working directory relative to the workspace. The copy gets a unique name
+  # beside the report and the report's mode, and a rename replaces the report, so a failure leaves
+  # the report as lockrot wrote it. Returns non-zero after a failure, with the copy removed.
   local dir=$2 escaped lock root rewritten
   dir=${dir#./}
   dir=${dir%/}
@@ -204,9 +202,18 @@ rewrite_annotation_paths() {
       ;;
   esac
   lock=$(escape_property "$lock" | sed -e 's/[]\/$*.^[]/\\&/g')
-  rewritten=$(mktemp "${3:?the scratch directory is not set}/annotations.XXXXXX")
-  sed -e "s/^\(::[a-z]* file=\)\(${lock}\),/\1${escaped}\/\2,/" "$1" > "$rewritten" \
-    && cat "$rewritten" > "$1"
+  rewritten=$(mktemp "$(dirname "$1")/.lockrot-rewrite.XXXXXX") || return 1
+  if sed -e "s/^\(::[a-z]* file=\)\(${lock}\),/\1${escaped}\/\2,/" "$1" > "$rewritten" \
+    && chmod "$(file_mode "$1")" "$rewritten" && mv -f "$rewritten" "$1"; then
+    return 0
+  fi
+  rm -f "$rewritten"
+  return 1
+}
+
+# The permission bits of $1 in octal: GNU stat (Linux, Git Bash) first, then BSD stat (macOS).
+file_mode() {
+  stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"
 }
 
 report_extension() {

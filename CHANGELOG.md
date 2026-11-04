@@ -8,6 +8,9 @@ All notable changes to this action are documented here. The format follows
 
 ### Changed
 
+- Without `output`, each action step writes its report in a directory of its own under
+  `RUNNER_TEMP`, so a later step of the same job no longer replaces it. The old default path was
+  `RUNNER_TEMP/lockrot/report.<ext>`. Read the path from the `report` output.
 - The job summary comes from the same lockrot run as the report. With lockrot 0.13.0 or newer,
   the run writes the markdown summary beside it with `--output`. The action no longer runs
   lockrot a second time offline. The summary now shows that run's own notes, an offline note included when
@@ -41,14 +44,15 @@ All notable changes to this action are documented here. The format follows
 
 ### Fixed
 
-- Without `output`, each action step writes its report in a directory of its own under
-  `RUNNER_TEMP`. A later step of the same job with the same format replaced the earlier report.
-  The default path is no longer `RUNNER_TEMP/lockrot/report.<ext>`, so read it from the `report`
-  output.
 - With `format: github` and a `working-directory` other than the root, the annotation rewrite
-  writes its temporary copy in the action's scratch directory. It wrote and removed
-  `<output>.tmp` beside the report. A directory of that name failed the step without the
-  `exit-code` and `report` outputs.
+  writes its copy to a temporary file with a unique name beside the report. It keeps the report's
+  mode and renames the copy over the report. It wrote and removed `<output>.tmp`, so a directory
+  of that name failed the step without the `exit-code` and `report` outputs. A rewrite that fails
+  now stops the step with an error, sets the `exit-code` output and leaves the report as lockrot
+  wrote it.
+- The `working-directory` texts say that lockrot runs there and that `COMPOSER` is read relative
+  to it. A `COMPOSER` path that repeats `working-directory` fails the setup step with the doubled
+  lock path.
 - A `format` input of whitespace only runs `github`, as an empty one does. It failed the step.
 - The README recipe for a project in a subdirectory sets `COMPOSER: apps/api/composer.json` with
   the default `working-directory`. SARIF, annotations and gitlab output then name

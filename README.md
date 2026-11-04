@@ -62,7 +62,7 @@ other CI systems and local runs.
 | `target-php` | *(`LOCKROT_TARGET_PHP`, then `extra.lockrot.target-php`, then `config.platform.php`, then the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html`. An empty value runs `github`. The action always passes `--format`, so `extra.lockrot.format` does not apply |
 | `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. From lockrot 0.13.0 the action passes it as `--output`. lockrot then refuses `composer.json`, `composer.lock` and the baseline there with exit 2, and writes nothing. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1. Nothing refuses those files then |
-| `working-directory` | `.` | Directory holding `composer.json` and `composer.lock` |
+| `working-directory` | `.` | Directory where lockrot runs, relative to the workspace. It holds `composer.json` and `composer.lock`, unless `COMPOSER` names another manifest. `COMPOSER` is read relative to this directory |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
 | `all` | `false` | Report every checked package, not only flagged ones (`--all`) |
 | `baseline` | *(`extra.lockrot.baseline`, then `lockrot-baseline.json`)* | Baseline file to read, relative to `composer.json` (`--baseline`). When empty, an `extra.lockrot.baseline` in `composer.json` replaces the default file `lockrot-baseline.json` |
@@ -249,7 +249,9 @@ For a project in `apps/api`, keep the default `working-directory` and name the m
 lockrot then runs from the root of the repository and reads `apps/api/composer.lock`. SARIF,
 annotations and gitlab output name that path, so code scanning puts each alert on that lock. The
 setup step requires the same lock and the cache key hashes it. lockrot reads `extra.lockrot` and
-the baseline next to `apps/api/composer.json`.
+the baseline next to `apps/api/composer.json`. `COMPOSER` is relative to `working-directory`, so
+do not combine it with `working-directory: apps/api`. The setup step then looks for
+`apps/api/apps/api/composer.lock` and fails with that path.
 
 With `working-directory: apps/api` instead, the action rewrites annotations to
 `apps/api/composer.lock`. SARIF and gitlab output are not rewritten. lockrot names the lock
@@ -289,7 +291,9 @@ advisory with a reachable fix in it as `medium`. Add a `vulnerable` value such a
   tampered download stops the run. An explicit `version` is verified against the `.sha256` that the
   lockrot release publishes, and `checksum` lets you pin your own.
 - **Least privilege.** The action needs `contents: read` only. It reads the workspace and writes
-  to it in two cases you ask for: the `output` file and the baseline on `generate-baseline`. The
+  to it in two cases you ask for: the `output` file and the baseline on `generate-baseline`. For
+  `format: github`, the action writes the rewritten `output` file to a temporary file with a unique
+  name beside it, and renames that file over the report. The
   token in `github-token` is passed to lockrot, which sends it to `api.github.com` alone; it is
   never used for the download. lockrot keeps the workflow's own token from github.com when the
   runner is on another host.

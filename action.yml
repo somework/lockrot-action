@@ -18,7 +18,10 @@ inputs:
     required: false
     default: ''
   working-directory:
-    description: Directory that holds composer.json and composer.lock, relative to the workspace.
+    description: >-
+      Directory where lockrot runs, relative to the workspace. It holds composer.json and
+      composer.lock, unless COMPOSER names another manifest. COMPOSER is read relative to this
+      directory.
     required: false
     default: '.'
   fail-on:

@@ -23,7 +23,12 @@ main() {
     /*|[A-Za-z]:/*) lock_path=$lock ;;
     *) lock_path="$work_dir/$lock" ;;
   esac
-  [ -f "$lock_path" ] || fail "no ${lock} in '$work_dir' (working-directory)"
+  local hint=""
+  case "$lock" in
+    /*|[A-Za-z]:/*) ;;
+    */*) hint=": ${lock_path} does not exist. COMPOSER is relative to working-directory" ;;
+  esac
+  [ -f "$lock_path" ] || fail "no ${lock} in '$work_dir' (working-directory)${hint}"
   # An absolute COMPOSER passes the lock check without the directory that lockrot runs in.
   if [ ! -d "$work_dir" ] || [ ! -x "$work_dir" ]; then
     fail "the working-directory '$work_dir' is not a directory that the step can enter"
