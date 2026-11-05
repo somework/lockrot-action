@@ -17,7 +17,7 @@ All notable changes to this action are documented here. The format follows
   the run was offline. With an older lockrot `version`, the second run stays. With `--explain`
   in `args`, the action writes no job summary: lockrot refuses `--output` there, and a second
   offline run showed a whole report whose advisories and gate line could differ from the step.
-  The explanation is in the step log and the report file.
+  The explanation is in the report file, and in the step log for `format: table`.
 - The action passes `lockrot` as the command name before the options. A value can follow its
   option after a space in `args`, such as `--explain vendor/package`. From lockrot 0.13.0, a word
   in `args` that is no option value exits 2, where it named another command, such as
@@ -41,9 +41,22 @@ All notable changes to this action are documented here. The format follows
   action always passes `--format`, and that `--explain` exits 2 with `generate-baseline: true`.
   It also says that `--fail-on`, `--baseline` or `--target-php` in `args` exits 2 when the input
   of the same name is set.
+- A `--format` in `args` fails the step before lockrot runs, with an error that names the
+  `format` input. It replaced the format that the action prints, names and rewrites the report by.
 
 ### Fixed
 
+- The step fails before lockrot runs when `output` names a `composer.json` or `composer.lock`,
+  the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, and
+  `extra.lockrot.baseline`, else `lockrot-baseline.json`. With `--explain` in `args`, such a path
+  got the explanation copied over the file.
+- The `exit-code` output and the README say that a code other than 0, 1 and 2 is a setup failure,
+  such as 255 from a PHP fatal error or 137 from a killed process. The step fails on it, and its
+  warning says so.
+- The `cache` input and the README say that the cache holds lockrot's repository-activity answers
+  from GitHub, GitLab and Bitbucket, not from GitHub alone.
+- With `--explain` in `args`, the log line for the skipped job summary names the report file as
+  the place of the explanation, and also the step log for a format that the step prints.
 - With `format: github` and a `working-directory` other than the root, the annotation rewrite
   writes its copy to a temporary file with a unique name beside the report. It keeps the report's
   mode and renames the copy over the report. It wrote and removed `<output>.tmp`, so a directory

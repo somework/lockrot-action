@@ -50,7 +50,9 @@ other CI systems and local runs.
 6. **Exits with lockrot's code** after the cache is saved. `0`: no finding failed `fail-on`, and
    `strict-network` did not trip. `1`: a finding failed `fail-on`, or `strict-network` tripped.
    `2`: lockrot could not run or finish, for an input, configuration or usage error, or a file
-   that it could not write.
+   that it could not write. Any other code is a setup failure, and the step fails on it: PHP
+   stopped lockrot, for example 255 on a fatal error such as an exhausted `memory_limit`, or the
+   process was killed, for example 137 on an out-of-memory kill.
 
 ![Job summary with the lockrot findings table](https://lockrot.dev/assets/first-run.png)
 
@@ -60,20 +62,20 @@ other CI systems and local runs.
 |---|---|---|
 | `fail-on` | *(lockrot's own default: `none`)* | Comma-separated values that fail the step, at most one of each kind. A grade: `critical`, `high`, `medium` or `low`, which fails on that grade or a higher one. A flag: `abandoned`, `silent`, `pinned`, `left-behind`, `old-promise`, `stale` or `capped`. A flag fails on itself and on each flag before it in this order. A `vulnerable` value: `vulnerable` (any severity), `vulnerable-medium`, `vulnerable-high` or `vulnerable-critical`, which fails on that severity or a higher one. `unchecked` fails on a finding whose check did not run. `none` stands alone. Example: `left-behind,vulnerable-high`. Empty defers to `LOCKROT_FAIL_ON`, then to `extra.lockrot.fail-on` in the manifest. See [choosing the values](https://lockrot.dev/ci/) |
 | `target-php` | *(`LOCKROT_TARGET_PHP`, then `extra.lockrot.target-php`, then `config.platform.php`, then the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
-| `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html`. An empty value runs `github`. The action always passes `--format`, so `extra.lockrot.format` does not apply |
-| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. From lockrot 0.13.0 the action passes it as `--output`. lockrot then refuses `composer.json`, `composer.lock` and the baseline there with exit 2, and writes nothing. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1. Nothing refuses those files then |
+| `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html`. An empty value runs `github`. The action always passes `--format`, so `extra.lockrot.format` does not apply. A `--format` in `args` fails the step before lockrot runs |
+| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. The step fails before lockrot runs when the path names a `composer.json` or `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, and `extra.lockrot.baseline` in `composer.json`, else `lockrot-baseline.json`. From lockrot 0.13.0 the action passes the path as `--output`. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1 |
 | `working-directory` | `.` | Directory where lockrot runs, relative to the workspace. It holds `composer.json` and `composer.lock`, unless `COMPOSER` names another manifest. `COMPOSER` is read relative to this directory |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
 | `all` | `false` | Report every checked package, not only flagged ones (`--all`) |
 | `baseline` | *(`extra.lockrot.baseline`, then `lockrot-baseline.json`)* | Baseline file to read, relative to `composer.json` (`--baseline`). When empty, an `extra.lockrot.baseline` in `composer.json` replaces the default file `lockrot-baseline.json` |
 | `generate-baseline` | `false` | Write this run's findings to the baseline (`--generate-baseline`). The step exits 0 whatever `fail-on` says, 1 only when `strict-network` trips, and 2 when lockrot cannot run or finish. From lockrot 0.13.0 the report file holds the run's report. The step prints no annotations, and the action writes no job summary |
 | `strict-network` | `false` | Exit 1 when a run note counts as a network failure. Such a note says that lockrot could not read what it asked for. A Composer repository or a repository host (GitHub, GitLab, Bitbucket) did not answer, answered with an error or stopped at a rate limit. A repository can also list a locked package but return no versions of it. An offline run that finds no cached metadata for a locked package writes such a note too ([run notes](https://lockrot.dev/notes/)) |
-| `args` | | Extra lockrot options, split on whitespace. The action passes the `lockrot` command name first, so a value can follow its option after a space (`--explain vendor/package`). From lockrot 0.13.0, a misspelt option, or a word that is no option value, fails the step with exit 2. An older lockrot exits 1 there. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. It also exits 2 with `generate-baseline: true`. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
+| `args` | | Extra lockrot options, split on whitespace. The action passes the `lockrot` command name first, so a value can follow its option after a space (`--explain vendor/package`). From lockrot 0.13.0, a misspelt option, or a word that is no option value, fails the step with exit 2. An older lockrot exits 1 there. A `--format` in `args` fails the step before lockrot runs: set the `format` input instead. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. It also exits 2 with `generate-baseline: true`. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
 | `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.2` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
 | `github-token` | `${{ github.token }}` | Token for repository-activity checks on github.com, passed to lockrot as `GITHUB_TOKEN`. Without a token, lockrot asks github.com only about packages already stale on release age, and only up to a budget of them ([anonymous cap](https://lockrot.dev/notes/#repository_activity_anonymous_cap)). A package that it does not ask about carries S10, unless it is marked abandoned, so `fail-on: unchecked` fails on it. lockrot sends the token only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set `LOCKROT_GITHUB_TOKEN` to a github.com token in the step's or job's `env` instead. A `LOCKROT_GITHUB_TOKEN` in that `env` wins over this input |
 | `php-version` | | PHP to install with setup-php before running. Empty uses the runner's PHP when it is 7.4+ |
-| `cache` | `true` | Cache repository metadata and GitHub responses between runs |
+| `cache` | `true` | Cache Composer repository metadata and lockrot's repository-activity answers from GitHub, GitLab and Bitbucket between runs |
 | `summary` | `true` | Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the action passes `--markdown-max-bytes=1000000` unless `args` sets it, so lockrot leaves rows out of a larger report to keep within the runner's 1 MB limit. That cap also applies to the report file of `format: markdown`, and to any markdown `--output` file in `args`. With an older lockrot, a summary above 1 MB is skipped. Skipped with `--explain` in `args`, whose explanation is in the report file (and in the step log for `format: table`). Skipped with `generate-baseline: true` |
 
 Every lockrot option not listed here can be passed through `args`. Some options can also live
@@ -92,7 +94,7 @@ report, so it always passes `--format`, and an empty `format` runs `github`.
 
 | Output | Meaning |
 |---|---|
-| `exit-code` | lockrot's exit code, also when the step fails. Empty when the action fails before it sets the output. Examples are a failed download or sha256 check, an unknown `format`, a line break in an input and a missing lock |
+| `exit-code` | lockrot's exit code, also when the step fails. Empty when the action fails before it sets the output. Examples are a failed download or sha256 check, an unknown `format`, a line break in an input and a missing lock. A code other than 0, 1 and 2 is a setup failure, such as 255 from a PHP fatal error or 137 from a killed process, and the step fails on it |
 | `report` | Path of the report file in the requested format. Without `output`, each step gets a path of its own |
 | `version` | The lockrot version that ran |
 | `cache-hit` | `true` when the metadata cache was restored from the exact key |
@@ -310,7 +312,7 @@ advisory with a reachable fix in it as `medium`. Add a `vulnerable` value such a
   `actions/cache`. On a runner without PHP, setup-php fetches its interpreter from its own release
   assets and the platform's package sources.
 - **The metadata cache steers verdicts.** It holds Composer's repository metadata and lockrot's
-  GitHub responses. GitHub scopes cache entries to the branch that wrote them, so a pull request
+  repository-activity answers from GitHub, GitLab and Bitbucket. GitHub scopes cache entries to the branch that wrote them, so a pull request
   from a fork cannot feed one to `main`; someone with push access can, which is the same trust as
   pushing a workflow change. The archive itself is verified again right before it runs.
 - **`generate-baseline` writes a file.** Where it writes is set by `baseline` or by
