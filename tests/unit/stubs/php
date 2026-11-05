@@ -3,6 +3,15 @@
 # report whose exit code is $PHP_STUB_EXIT, and writes a markdown summary or the canned report
 # where --output asks for one.
 printf '%s\n' "$*" >> "${PHP_STUB_LOG:-/dev/null}"
+# The action reads composer.json with `php -n -r`: the real PHP after this directory on PATH runs it.
+if [ "${1:-}" = "-n" ] && [ "${2:-}" = "-r" ]; then
+  stubs=$(cd "$(dirname "$0")" && pwd)
+  IFS=:
+  for dir in $PATH; do
+    [ "$dir" != "$stubs" ] && [ -x "$dir/php" ] && exec "$dir/php" "$@"
+  done
+  exit 127
+fi
 if [ "${1:-}" = "-r" ]; then
   case $2 in *PHP_VERSION_ID*) exit "${PHP_STUB_TOO_OLD:-0}" ;; esac
   printf '8.4.0'

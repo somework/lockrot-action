@@ -18,7 +18,7 @@ run_run() { run bash "$GITHUB_ACTION_PATH/src/run.sh"; }
 # The action's scratch directory and the default report directory have random names. They read
 # as run/ and step/ here.
 random_dirs() { sed -e "s#/lockrot/run\.[A-Za-z0-9]*/#/lockrot/run/#g" -e "s#/lockrot/step\.[A-Za-z0-9]*/#/lockrot/step/#g"; }
-main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v -- '--format=markdown' | head -n 1 | random_dirs; }
+main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v '^-n -r' | grep -v -- '--format=markdown' | head -n 1 | random_dirs; }
 report_value() { output_value report | random_dirs; }
 
 @test "options are passed through and the exit code becomes an output, not a failure" {
@@ -286,21 +286,6 @@ exit-code=0"
   [ "$status" -eq 0 ]
   [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=table --explain acme/pkg" ]
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
-}
-
-@test "the report goes through --output, so a lock named as the output is intact when lockrot reads it" {
-  # lockrot refuses composer.lock as an --output target and exits 2; this php stands in for that.
-  export INPUT_OUTPUT=project/composer.lock
-  mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nprintf "%%s\\n" "$*" >> "$PHP_STUB_LOG"\ncat "$GITHUB_WORKSPACE/project/composer.lock" > "$SCRATCH/lock-seen"\nexit 2\n' > "$SCRATCH/bin/php"
-  chmod +x "$SCRATCH/bin/php"
-  export PATH="$SCRATCH/bin:$PATH"
-  run_run
-  [ "$status" -eq 0 ]
-  grep -q -- "--output=github:$GITHUB_WORKSPACE/project/composer.lock" "$PHP_STUB_LOG"
-  [ "$(cat "$SCRATCH/lock-seen")" = '{"packages": []}' ]
-  [ "$(cat "$GITHUB_WORKSPACE/project/composer.lock")" = '{"packages": []}' ]
-  [ "$(output_value exit-code)" = "2" ]
 }
 
 @test "a report file that lockrot did not write is named in the log, not read" {
@@ -585,18 +570,6 @@ exit-code=0"
   [ "$(cat "$SCRATCH/real.txt")" = '::warning file=composer.lock,line=1::old' ]
 }
 
-@test "with --explain, a lock named as the output is intact when lockrot reads it and after a failed run" {
-  export INPUT_FORMAT=table INPUT_ARGS='--explain=acme/pkg' INPUT_OUTPUT=project/composer.lock
-  mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\ncat "$GITHUB_WORKSPACE/project/composer.lock" > "$SCRATCH/lock-seen"\necho "partial"\nexit 2\n' > "$SCRATCH/bin/php"
-  chmod +x "$SCRATCH/bin/php"
-  export PATH="$SCRATCH/bin:$PATH"
-  run_run
-  [ "$status" -eq 0 ]
-  [ "$(cat "$SCRATCH/lock-seen")" = '{"packages": []}' ]
-  [ "$(cat "$GITHUB_WORKSPACE/project/composer.lock")" = '{"packages": []}' ]
-}
-
 @test "an output path where an earlier action version kept its summary file keeps the report" {
   export INPUT_FORMAT=sarif INPUT_OUTPUT="$RUNNER_TEMP/lockrot/summary.md"
   run_run
@@ -614,4 +587,98 @@ exit-code=0"
   run_run
   [ "$status" -eq 0 ]
   [ "$(output_value exit-code)" = "0" ]
+}
+
+# $1 the output input. The step fails before lockrot runs and names the file.
+assert_output_refused() {
+  export INPUT_OUTPUT=$1
+  run_run
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::lockrot-action: the output input names $2"* ]] || false
+  [ -z "$(main_call)" ]
+  [ -z "$(output_value exit-code)" ]
+}
+
+@test "an output that names composer.lock or composer.json is refused before lockrot runs, with or without --explain" {
+  for args in '' '--explain=acme/pkg'; do
+    export INPUT_FORMAT=table INPUT_ARGS="$args"
+    assert_output_refused project/composer.lock "$GITHUB_WORKSPACE/project/composer.lock"
+    assert_output_refused project/./sub/../composer.json "$GITHUB_WORKSPACE/project/./sub/../composer.json"
+    assert_output_refused other/Composer.JSON "$GITHUB_WORKSPACE/other/Composer.JSON"
+  done
+  [ "$(cat "$GITHUB_WORKSPACE/project/composer.lock")" = '{"packages": []}' ]
+  [ "$(cat "$GITHUB_WORKSPACE/project/composer.json")" = '{}' ]
+  [ ! -e "$GITHUB_WORKSPACE/other" ]
+}
+
+@test "an output that is a symlink to composer.lock is refused" {
+  mkdir -p "$GITHUB_WORKSPACE/build"
+  ln -s ../project/composer.lock "$GITHUB_WORKSPACE/build/report.txt"
+  assert_output_refused build/report.txt "$GITHUB_WORKSPACE/build/report.txt"
+  [ "$(cat "$GITHUB_WORKSPACE/project/composer.lock")" = '{"packages": []}' ]
+}
+
+@test "an output that names the manifest or the lock that COMPOSER names is refused" {
+  export COMPOSER=alt.json
+  printf '{}\n' > "$GITHUB_WORKSPACE/project/alt.json"
+  printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/project/alt.lock"
+  assert_output_refused project/alt.lock "$GITHUB_WORKSPACE/project/alt.lock"
+  assert_output_refused project/alt.json "$GITHUB_WORKSPACE/project/alt.json"
+  [ "$(cat "$GITHUB_WORKSPACE/project/alt.lock")" = '{"packages": []}' ]
+}
+
+@test "an output that names the default baseline is refused, whether or not the file exists" {
+  assert_output_refused project/lockrot-baseline.json "$GITHUB_WORKSPACE/project/lockrot-baseline.json"
+  [ ! -e "$GITHUB_WORKSPACE/project/lockrot-baseline.json" ]
+  printf '{"baseline": 1}\n' > "$GITHUB_WORKSPACE/project/lockrot-baseline.json"
+  export INPUT_FORMAT=json INPUT_ARGS='--explain=acme/pkg'
+  assert_output_refused project/lockrot-baseline.json "$GITHUB_WORKSPACE/project/lockrot-baseline.json"
+  [ "$(cat "$GITHUB_WORKSPACE/project/lockrot-baseline.json")" = '{"baseline": 1}' ]
+}
+
+@test "an output that names the baseline of extra.lockrot.baseline or of the baseline input is refused" {
+  printf '{"extra": {"lockrot": {"baseline": "ci/rot.json"}}}\n' > "$GITHUB_WORKSPACE/project/composer.json"
+  assert_output_refused project/ci/rot.json "$GITHUB_WORKSPACE/project/ci/rot.json"
+  export INPUT_BASELINE=other-baseline.json
+  assert_output_refused project/other-baseline.json "$GITHUB_WORKSPACE/project/other-baseline.json"
+  assert_output_refused project/ci/rot.json "$GITHUB_WORKSPACE/project/ci/rot.json"
+}
+
+@test "an output beside the composer files is not refused" {
+  export INPUT_FORMAT=table INPUT_ARGS='--explain=acme/pkg' INPUT_OUTPUT=project/explain.txt
+  run_run
+  [ "$status" -eq 0 ]
+  [ -s "$GITHUB_WORKSPACE/project/explain.txt" ]
+  [ "$(cat "$GITHUB_WORKSPACE/project/composer.lock")" = '{"packages": []}' ]
+}
+
+@test "a --format in args is refused before lockrot runs, and the error names the format input" {
+  for args in '--format=sarif' '--explain acme/pkg --format json'; do
+    export INPUT_ARGS="$args"
+    run_run
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"::error::lockrot-action: args sets --format"*"the format input"* ]] || false
+    [ -z "$(main_call)" ]
+  done
+}
+
+@test "an exit code that lockrot never gives, such as 255 from a PHP fatal error, is kept and named a setup failure" {
+  export PHP_STUB_EXIT=255
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(output_value exit-code)" = "255" ]
+  [[ "$output" == *"::warning::lockrot-action: lockrot exited with 255, which is no lockrot exit code"*"setup failure"* ]] || false
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+}
+
+@test "the --explain summary-skip line points format json at the report file and format table at the step log too" {
+  export INPUT_FORMAT=json INPUT_ARGS='--explain=acme/pkg'
+  run_run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"job summary skipped: with --explain, the explanation is in the report file"* ]] || false
+  [[ "$output" != *"step log"* ]] || false
+  export INPUT_FORMAT=table
+  run_run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"job summary skipped: with --explain, the explanation is in the step log and the report file"* ]] || false
 }

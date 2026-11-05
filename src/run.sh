@@ -77,6 +77,8 @@ main() {
     set +f
     args+=("${extra[@]}")
   fi
+  ! has_option --format ${extra[@]+"${extra[@]}"} \
+    || fail "args sets --format, which replaces the format the action prints, names and rewrites the report by. Set the format input instead"
 
   local explain=false
   ! has_option --explain ${extra[@]+"${extra[@]}"} || explain=true
@@ -88,6 +90,7 @@ main() {
       /*|[A-Za-z]:/*) ;;
       *) report="$(native_path "${GITHUB_WORKSPACE:-$PWD}")/${report}" ;;
     esac
+    refuse_project_file "$report" "$work_dir"
   else
     # A directory of this step's own: a later step of the job must not replace this report. Mode
     # 755 as for RUNNER_TEMP/lockrot, so a later step that runs as another user can read it.
@@ -119,7 +122,10 @@ main() {
   local summary_wanted=false summary_file="" summary_temp=""
   if is_true "${INPUT_SUMMARY:-true}" && [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ "$generate_baseline" = false ]; then
     if [ "$explain" = true ]; then
-      log "job summary skipped: --explain explains one package in the step log and the report file"
+      case "$format" in
+        github|table|markdown) log "job summary skipped: with --explain, the explanation is in the step log and the report file" ;;
+        *) log "job summary skipped: with --explain, the explanation is in the report file" ;;
+      esac
     else
       summary_wanted=true
     fi
@@ -175,7 +181,9 @@ main() {
       *) log "${format} report written to ${report} ($(wc -c < "$report" | tr -d ' ') bytes)" ;;
     esac
   fi
-  if [ "$code" -gt 1 ]; then
+  if [ "$code" -gt 2 ]; then
+    warn "lockrot exited with ${code}, which is no lockrot exit code: PHP stopped it, for example on a fatal error such as an exhausted memory_limit, or the process was killed. The step fails as a setup failure"
+  elif [ "$code" -gt 1 ]; then
     warn "lockrot exited with ${code}; see the log above for the reason"
   fi
 
@@ -199,6 +207,63 @@ main() {
 rewrite_failed() {
   set_output exit-code "$2"
   fail "could not rewrite the annotation paths in $1"
+}
+
+# Fails when report path $1 names a file that lockrot reads or that the baseline is, as lockrot
+# refuses for --output: --explain and a lockrot older than 0.13.0 get stdout copied there instead.
+# $2 is the working directory. Composer reads COMPOSER relative to it, and every baseline is
+# relative to the manifest's directory.
+refuse_project_file() {
+  local report=$1 project manifest lock configured base name file
+  project=$(cd "$2" 2> /dev/null && pwd -P) || return 0
+  manifest=$(native_path "$(trim "${COMPOSER:-}")")
+  [ -n "$manifest" ] || manifest=composer.json
+  lock=$(composer_lock_name)
+  case "$manifest" in /*|[A-Za-z]:/*) ;; *) manifest="${project}/${manifest}" ;; esac
+  case "$lock" in /*|[A-Za-z]:/*) ;; *) lock="${project}/${lock}" ;; esac
+  base=$(dirname "$manifest")
+  configured=""
+  if [ -f "$manifest" ]; then
+    # -n: no php.ini, so no startup warning lands in the value.
+    # shellcheck disable=SC2016 # PHP code, expanded by PHP
+    configured=$(php -n -r '$j = json_decode((string) file_get_contents($argv[1]), true); $b = $j["extra"]["lockrot"]["baseline"] ?? null; if (is_string($b)) { echo $b; }' -- "$manifest" 2> /dev/null) || configured=""
+  fi
+  [ -n "$configured" ] || configured=lockrot-baseline.json
+  name=$(basename "$report" | tr '[:upper:]' '[:lower:]')
+  case "$name" in
+    composer.json|composer.lock) fail "the output input names ${report}, a ${name} that lockrot reads. The action writes no report there" ;;
+  esac
+  for file in "${project}/composer.json" "${project}/composer.lock" "$manifest" "$lock"; do
+    ! same_path "$report" "$file" || fail "the output input names ${report}, which is ${file}, a file that lockrot reads. The action writes no report there"
+  done
+  for file in "$(trim "${INPUT_BASELINE:-}")" "$configured"; do
+    [ -n "$file" ] || continue
+    file=$(native_path "$file")
+    case "$file" in /*|[A-Za-z]:/*) ;; *) file="${base}/${file}" ;; esac
+    ! same_path "$report" "$file" || fail "the output input names ${report}, which is the baseline file ${file}. The action writes no report there"
+  done
+}
+
+# Whether paths $1 and $2 name one file: the same file on disk, or, for a file that does not exist
+# yet, the same spelling once each existing directory is resolved.
+# shortcut: a missing file is compared case-sensitively, compare by the filesystem's case rule when
+# a workflow names a missing baseline in another case on macOS or Windows.
+same_path() {
+  [ "$1" -ef "$2" ] || [ "$(resolved_path "$1")" = "$(resolved_path "$2")" ]
+}
+
+# $1 with its nearest existing directory resolved (symlinks, `.` and `..`). The part below that
+# directory keeps its spelling.
+resolved_path() {
+  local dir=$1 rest="" resolved
+  while :; do
+    rest="/$(basename "$dir")${rest}"
+    dir=$(dirname "$dir")
+    if resolved=$(cd "$dir" 2> /dev/null && pwd -P); then
+      printf '%s%s\n' "${resolved%/}" "$rest"
+      return 0
+    fi
+  done
 }
 
 # The file id of $1 itself, not of a symlink's target.
