@@ -16,6 +16,8 @@ github_env() {
   cp -R "$ACTION_ROOT/src" "$GITHUB_ACTION_PATH/src"
   printf '{}\n' > "$GITHUB_WORKSPACE/project/composer.json"
   printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/project/composer.lock"
+  # The extra.lockrot.baseline tests need a real php on the host: the php stub hands it the
+  # action's json_decode call.
   PHP_STUB_REAL=$(command -v php) || PHP_STUB_REAL=""
   export PHP_STUB_REAL
   export PATH="$ACTION_ROOT/tests/unit/stubs:$PATH"

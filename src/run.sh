@@ -79,6 +79,8 @@ main() {
   fi
   ! has_option --format ${extra[@]+"${extra[@]}"} \
     || fail "args sets --format, which replaces the format the action prints, names and rewrites the report by. Set the format input instead"
+  ! has_working_dir ${extra[@]+"${extra[@]}"} \
+    || fail "args sets the working directory (-d or --working-dir), which moves the project away from the files the action checks and annotates. Set the working-directory input instead"
 
   local explain=false
   ! has_option --explain ${extra[@]+"${extra[@]}"} || explain=true
@@ -100,8 +102,8 @@ main() {
     report="${step_dir}/report.$(report_extension "$format")"
   fi
   mkdir -p "$(dirname "$report")"
-  # From lockrot 0.13.0 the report goes through --output, so lockrot refuses a target such as
-  # composer.lock or the baseline and writes nothing. --explain refuses --output, and an older
+  # From lockrot 0.13.0 the report goes through --output. lockrot's own check of the target is the
+  # second line of defence, after refuse_project_file. --explain refuses --output, and an older
   # lockrot has none, so both get stdout copied there after a run that exits 0 or 1.
   local stdout_file report_by_output=false report_id=""
   stdout_file="${SCRATCH_DIR}/stdout.$(report_extension "$format")"
@@ -214,7 +216,7 @@ rewrite_failed() {
 # $2 is the working directory, and the rest are the args words. Composer reads COMPOSER relative to
 # the working directory, and every baseline is relative to the manifest's directory.
 refuse_project_file() {
-  local report=$1 project manifest lock base candidate name file
+  local report=$1 project manifest lock base candidate name file key i
   project=$(cd -P "$2" 2> /dev/null && pwd -P) || return 0
   shift 2
   manifest=$(native_path "$(trim "${COMPOSER:-}")")
@@ -227,19 +229,33 @@ refuse_project_file() {
   while IFS= read -r file; do
     baselines+=("$file")
   done < <(option_values --baseline "$@")
+  # Each protected path is resolved once: every resolution forks, and forks are slow under Git Bash.
+  local -a protected=() keys=() reasons=()
+  for file in "${project}/composer.json" "${project}/composer.lock" "$manifest" "$lock"; do
+    protected+=("$file")
+    keys+=("$(path_key "$file")")
+    reasons+=("which is ${file}, a file that lockrot reads")
+  done
+  for file in "${baselines[@]}"; do
+    [ -n "$file" ] || continue
+    file=$(native_path "$file")
+    case "$file" in /*|[A-Za-z]:/*) ;; *) file="${base}/${file}" ;; esac
+    protected+=("$file")
+    keys+=("$(path_key "$file")")
+    reasons+=("which is the baseline file ${file}")
+  done
   while IFS= read -r candidate; do
     name=$(basename "$candidate" | tr '[:upper:]' '[:lower:]')
     case "$name" in
       composer.json|composer.lock) fail "the output input names ${report}, a ${name} that lockrot reads. The action writes no report there" ;;
     esac
-    for file in "${project}/composer.json" "${project}/composer.lock" "$manifest" "$lock"; do
-      ! same_path "$candidate" "$file" || fail "the output input names ${report}, which is ${file}, a file that lockrot reads. The action writes no report there"
-    done
-    for file in "${baselines[@]}"; do
-      [ -n "$file" ] || continue
-      file=$(native_path "$file")
-      case "$file" in /*|[A-Za-z]:/*) ;; *) file="${base}/${file}" ;; esac
-      ! same_path "$candidate" "$file" || fail "the output input names ${report}, which is the baseline file ${file}. The action writes no report there"
+    key=$(path_key "$candidate")
+    i=0
+    while [ "$i" -lt "${#protected[@]}" ]; do
+      if [ "$candidate" -ef "${protected[i]}" ] || [ "$key" = "${keys[i]}" ]; then
+        fail "the output input names ${report}, ${reasons[i]}. The action writes no report there"
+      fi
+      i=$((i + 1))
     done
   done < <(link_chain "$report")
 }
@@ -291,11 +307,11 @@ link_chain() {
   done
 }
 
-# Whether paths $1 and $2 name one file: the same file on disk, or the same resolved spelling in
-# any letter case. A missing file in another case is one file on macOS and Windows, and refusing
-# it on Linux too costs only a rename of the report.
-same_path() {
-  [ "$1" -ef "$2" ] || [ "$(resolved_path "$1" | tr '[:upper:]' '[:lower:]')" = "$(resolved_path "$2" | tr '[:upper:]' '[:lower:]')" ]
+# The resolved spelling of path $1 in lower case. Two paths with one key name one file, unless the
+# filesystem tells letter case apart. A missing file in another case is one file on macOS and
+# Windows, and refusing it on Linux too costs only a rename of the report.
+path_key() {
+  resolved_path "$1" | tr '[:upper:]' '[:lower:]'
 }
 
 # Absolute path $1 the way the system reads it once `mkdir -p` makes its missing directories: the
@@ -338,6 +354,16 @@ resolve_once() {
   for segment in ${folded[@]+"${folded[@]}"}; do printf '/%s' "$segment"; done
   [ -n "$resolved" ] || [ "${#folded[@]}" -gt 0 ] || printf '/'
   printf '\n'
+}
+
+# Whether the args words give lockrot's working-directory option: `-d dir`, `-ddir`,
+# `--working-dir dir` or `--working-dir=dir`.
+has_working_dir() {
+  local argument
+  for argument in "$@"; do
+    case "$argument" in -d*|--working-dir|--working-dir=*) return 0 ;; esac
+  done
+  return 1
 }
 
 # The file id of $1 itself, not of a symlink's target.

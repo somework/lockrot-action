@@ -749,3 +749,25 @@ assert_output_refused() {
     [[ "$output" == *"job summary skipped: with --explain, the explanation is in the report file"* ]] || false
   done
 }
+
+@test "a -d or --working-dir in args is refused before lockrot runs, in every spelling, and the error names the working-directory input" {
+  mkdir -p "$GITHUB_WORKSPACE/project/sub"
+  printf '{"baseline": 1}\n' > "$GITHUB_WORKSPACE/project/sub/lockrot-baseline.json"
+  export INPUT_FORMAT=table INPUT_OUTPUT=project/sub/lockrot-baseline.json
+  for args in '--explain=acme/pkg -d sub' '--explain=acme/pkg -dsub' '--explain=acme/pkg --working-dir sub' '--explain=acme/pkg --working-dir=sub'; do
+    export INPUT_ARGS="$args"
+    run_run
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"::error::lockrot-action: args sets the working directory"*"the working-directory input"* ]] || false
+    [ -z "$(main_call)" ]
+    [ -z "$(output_value exit-code)" ]
+  done
+  [ "$(cat "$GITHUB_WORKSPACE/project/sub/lockrot-baseline.json")" = '{"baseline": 1}' ]
+}
+
+@test "an option in args that only starts like -d, such as --dev, is not refused as a working directory" {
+  export INPUT_ARGS='--dev'
+  run_run
+  [ "$status" -eq 0 ]
+  [[ "$(main_call)" == *" --dev"* ]] || false
+}

@@ -41,12 +41,17 @@ All notable changes to this action are documented here. The format follows
   of the same name is set.
 - A `--format` in `args` fails the step before lockrot runs, with an error that names the
   `format` input. It replaced the format that the action prints, names and rewrites the report by.
+- A `-d` or `--working-dir` in `args`, in any spelling, fails the step before lockrot runs, with an
+  error that names the `working-directory` input. It moved the project away from the files that
+  the action checks and annotates, so an `output` in the other directory could overwrite its
+  baseline.
 
 ### Fixed
 
 - The step fails before lockrot runs when `output` names a `composer.json` or `composer.lock`,
   the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the `baseline`
-  input, a `--baseline` in `args`, and `extra.lockrot.baseline`, else `lockrot-baseline.json`. The
+  input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else
+  `lockrot-baseline.json`. The
   check follows symlinks and `..`, and compares a missing file in any letter case. With
   `--explain` in `args`, such a path got the explanation copied over the file.
 - The `exit-code` output and the README say that a code other than 0, 1 and 2 is a setup failure,
