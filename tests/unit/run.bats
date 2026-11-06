@@ -18,7 +18,7 @@ run_run() { run bash "$GITHUB_ACTION_PATH/src/run.sh"; }
 # The action's scratch directory and the default report directory have random names. They read
 # as run/ and step/ here.
 random_dirs() { sed -e "s#/lockrot/run\.[A-Za-z0-9]*/#/lockrot/run/#g" -e "s#/lockrot/step\.[A-Za-z0-9]*/#/lockrot/step/#g"; }
-main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v '^-n -r' | grep -v -- '--format=markdown' | head -n 1 | random_dirs; }
+main_call() { grep -v -- '--version' "$PHP_STUB_LOG" | grep -v '^-r' | grep -v json_decode | grep -v -- '--format=markdown' | head -n 1 | random_dirs; }
 report_value() { output_value report | random_dirs; }
 
 @test "options are passed through and the exit code becomes an output, not a failure" {
@@ -681,4 +681,71 @@ assert_output_refused() {
   run_run
   [ "$status" -eq 0 ]
   [[ "$output" == *"job summary skipped: with --explain, the explanation is in the step log and the report file"* ]] || false
+}
+
+@test "an output with .. after a directory that does not exist yet is refused when it lands on a protected file" {
+  export INPUT_FORMAT=table INPUT_ARGS='--explain=acme/pkg' COMPOSER=alt.json
+  printf '{}\n' > "$GITHUB_WORKSPACE/project/alt.json"
+  printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/project/alt.lock"
+  printf '{"baseline": 1}\n' > "$GITHUB_WORKSPACE/project/lockrot-baseline.json"
+  assert_output_refused project/nope/../lockrot-baseline.json "$GITHUB_WORKSPACE/project/nope/../lockrot-baseline.json"
+  assert_output_refused project/a/b/../../alt.lock "$GITHUB_WORKSPACE/project/a/b/../../alt.lock"
+  assert_output_refused project/nope/../../project/alt.json "$GITHUB_WORKSPACE/project/nope/../../project/alt.json"
+  [ "$(cat "$GITHUB_WORKSPACE/project/lockrot-baseline.json")" = '{"baseline": 1}' ]
+  [ "$(cat "$GITHUB_WORKSPACE/project/alt.lock")" = '{"packages": []}' ]
+}
+
+@test "an output with .. after a symlinked directory is compared where the link points" {
+  # build/link/.. is the parent of the link target, here project, not build.
+  mkdir -p "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/project/sub"
+  ln -s ../project/sub "$GITHUB_WORKSPACE/build/link"
+  assert_output_refused build/link/../lockrot-baseline.json "$GITHUB_WORKSPACE/build/link/../lockrot-baseline.json"
+}
+
+@test "an output that names the --baseline value in args is refused, in both spellings" {
+  export INPUT_FORMAT=table
+  export INPUT_ARGS='--explain=acme/pkg --baseline=ci.json'
+  assert_output_refused project/ci.json "$GITHUB_WORKSPACE/project/ci.json"
+  export INPUT_ARGS='--explain=acme/pkg --baseline ci/b.json'
+  assert_output_refused project/ci/b.json "$GITHUB_WORKSPACE/project/ci/b.json"
+}
+
+@test "an output that is a symlink to another project's composer.json or to a missing baseline is refused" {
+  mkdir -p "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/other"
+  printf '{}\n' > "$GITHUB_WORKSPACE/other/composer.json"
+  ln -s ../other/composer.json "$GITHUB_WORKSPACE/build/r.txt"
+  assert_output_refused build/r.txt "$GITHUB_WORKSPACE/build/r.txt"
+  ln -s ../project/lockrot-baseline.json "$GITHUB_WORKSPACE/build/b.txt"
+  assert_output_refused build/b.txt "$GITHUB_WORKSPACE/build/b.txt"
+  [ ! -e "$GITHUB_WORKSPACE/project/lockrot-baseline.json" ]
+  [ "$(cat "$GITHUB_WORKSPACE/other/composer.json")" = '{}' ]
+}
+
+@test "an output that names a missing baseline in another letter case is refused" {
+  assert_output_refused project/LOCKROT-BASELINE.json "$GITHUB_WORKSPACE/project/LOCKROT-BASELINE.json"
+}
+
+@test "a composer.json that PHP cannot read for the baseline is a warning, and the default baseline stays protected" {
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 255;; esac\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  assert_output_refused project/lockrot-baseline.json "$GITHUB_WORKSPACE/project/lockrot-baseline.json"
+  [[ "$output" == *"::warning::lockrot-action: could not read extra.lockrot.baseline from "*"/workspace/project/composer.json (php exited with 255)"* ]] || false
+}
+
+@test "a PHP startup line on stdout is not read as the configured baseline" {
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) echo "Warning: PHP Startup: Unable to load dynamic library";; esac\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  assert_output_refused project/lockrot-baseline.json "$GITHUB_WORKSPACE/project/lockrot-baseline.json"
+}
+
+@test "with --explain and a format that lockrot refuses there, the summary-skip line names no step log" {
+  for format in github markdown; do
+    export INPUT_FORMAT=$format INPUT_ARGS='--explain=acme/pkg'
+    run_run
+    [[ "$output" == *"job summary skipped: with --explain, the explanation is in the report file"* ]] || false
+  done
 }

@@ -60,8 +60,8 @@ inputs:
       directory of the step's own under RUNNER_TEMP, so a later step of the job does not replace
       it. Either way the path is the report output. The step fails before lockrot runs when the
       path names a composer.json or composer.lock, the manifest or lock that COMPOSER names, or a
-      baseline: the baseline input, and extra.lockrot.baseline in composer.json, else
-      lockrot-baseline.json. From lockrot 0.13.0 the action passes the path as --output. With
+      baseline: the baseline input, a --baseline in args, and extra.lockrot.baseline in
+      composer.json, else lockrot-baseline.json. From lockrot 0.13.0 the action passes the path as --output. With
       --explain in args, or with an older lockrot, the action copies stdout to the path after a
       run that exits 0 or 1.
     required: false

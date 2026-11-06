@@ -23,9 +23,7 @@ All notable changes to this action are documented here. The format follows
   in `args` that is no option value exits 2, where it named another command, such as
   `self-update`, or none.
 - With lockrot 0.13.0 or newer, the report goes to the `output` path through
-  `--output=<format>:<path>`, not through a shell redirection. lockrot then refuses
-  `composer.json`, `composer.lock` and the baseline as the path with exit 2, and writes nothing.
-  Under `generate-baseline`, the report file holds the run's report. With `--explain` in `args`,
+  `--output=<format>:<path>`, not through a shell redirection. Under `generate-baseline`, the report file holds the run's report. With `--explain` in `args`,
   or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1.
   lockrot refuses `--output` with `--explain`.
 - The action keeps its own temporary files in a directory of each run under `RUNNER_TEMP`, so no
@@ -47,9 +45,10 @@ All notable changes to this action are documented here. The format follows
 ### Fixed
 
 - The step fails before lockrot runs when `output` names a `composer.json` or `composer.lock`,
-  the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, and
-  `extra.lockrot.baseline`, else `lockrot-baseline.json`. With `--explain` in `args`, such a path
-  got the explanation copied over the file.
+  the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the `baseline`
+  input, a `--baseline` in `args`, and `extra.lockrot.baseline`, else `lockrot-baseline.json`. The
+  check follows symlinks and `..`, and compares a missing file in any letter case. With
+  `--explain` in `args`, such a path got the explanation copied over the file.
 - The `exit-code` output and the README say that a code other than 0, 1 and 2 is a setup failure,
   such as 255 from a PHP fatal error or 137 from a killed process. The step fails on it, and its
   warning says so.
@@ -80,7 +79,7 @@ All notable changes to this action are documented here. The format follows
 - An option value after a space in `args` no longer exits 1, which the `exit-code` output names
   as a finding that failed `fail-on`. A misspelt option followed by a value exits 2.
 - `output: composer.lock` or the baseline path no longer empties that file before lockrot reads
-  it. lockrot refuses such a path, and the file stays as it was.
+  it. The step fails before lockrot runs, and the file stays as it was.
 - A file at the `output` path that lockrot did not replace in this run is not logged as written,
   rewritten for annotations or published as the job summary. Such a file comes from an earlier
   run, when lockrot exits before it writes, for example under `LOCKROT_DISABLE`.

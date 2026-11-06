@@ -16,6 +16,8 @@ github_env() {
   cp -R "$ACTION_ROOT/src" "$GITHUB_ACTION_PATH/src"
   printf '{}\n' > "$GITHUB_WORKSPACE/project/composer.json"
   printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/project/composer.lock"
+  PHP_STUB_REAL=$(command -v php) || PHP_STUB_REAL=""
+  export PHP_STUB_REAL
   export PATH="$ACTION_ROOT/tests/unit/stubs:$PATH"
   export CURL_STUB_LOG="$SCRATCH/curl.log"
   export PHP_STUB_LOG="$SCRATCH/php.log"
