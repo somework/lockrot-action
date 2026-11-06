@@ -17,15 +17,13 @@ All notable changes to this action are documented here. The format follows
   the run was offline. With an older lockrot `version`, the second run stays. With `--explain`
   in `args`, the action writes no job summary: lockrot refuses `--output` there, and a second
   offline run showed a whole report whose advisories and gate line could differ from the step.
-  The explanation is in the step log and the report file.
+  The explanation is in the report file, and in the step log for `format: table`.
 - The action passes `lockrot` as the command name before the options. A value can follow its
   option after a space in `args`, such as `--explain vendor/package`. From lockrot 0.13.0, a word
   in `args` that is no option value exits 2, where it named another command, such as
   `self-update`, or none.
 - With lockrot 0.13.0 or newer, the report goes to the `output` path through
-  `--output=<format>:<path>`, not through a shell redirection. lockrot then refuses
-  `composer.json`, `composer.lock` and the baseline as the path with exit 2, and writes nothing.
-  Under `generate-baseline`, the report file holds the run's report. With `--explain` in `args`,
+  `--output=<format>:<path>`, not through a shell redirection. Under `generate-baseline`, the report file holds the run's report. With `--explain` in `args`,
   or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1.
   lockrot refuses `--output` with `--explain`.
 - The action keeps its own temporary files in a directory of each run under `RUNNER_TEMP`, so no
@@ -41,9 +39,28 @@ All notable changes to this action are documented here. The format follows
   action always passes `--format`, and that `--explain` exits 2 with `generate-baseline: true`.
   It also says that `--fail-on`, `--baseline` or `--target-php` in `args` exits 2 when the input
   of the same name is set.
+- A `--format` in `args` fails the step before lockrot runs, with an error that names the
+  `format` input. It replaced the format that the action prints, names and rewrites the report by.
+- A `-d` or `--working-dir` in `args`, in any spelling, fails the step before lockrot runs, with an
+  error that names the `working-directory` input. It moved the project away from the files that
+  the action checks and annotates, so an `output` in the other directory could overwrite its
+  baseline.
 
 ### Fixed
 
+- The step fails before lockrot runs when `output` names a `composer.json` or `composer.lock`,
+  the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the `baseline`
+  input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else
+  `lockrot-baseline.json`. The
+  check follows symlinks and `..`, and compares a missing file in any letter case. With
+  `--explain` in `args`, such a path got the explanation copied over the file.
+- The `exit-code` output and the README say that a code other than 0, 1 and 2 is a setup failure,
+  such as 255 from a PHP fatal error or 137 from a killed process. The step fails on it, and its
+  warning says so.
+- The `cache` input and the README say that the cache holds lockrot's repository-activity answers
+  from GitHub, GitLab and Bitbucket, not from GitHub alone.
+- With `--explain` in `args`, the log line for the skipped job summary names the report file as
+  the place of the explanation, and also the step log for a format that the step prints.
 - With `format: github` and a `working-directory` other than the root, the annotation rewrite
   writes its copy to a temporary file with a unique name beside the report. It keeps the report's
   mode and renames the copy over the report. It wrote and removed `<output>.tmp`, so a directory
@@ -67,7 +84,7 @@ All notable changes to this action are documented here. The format follows
 - An option value after a space in `args` no longer exits 1, which the `exit-code` output names
   as a finding that failed `fail-on`. A misspelt option followed by a value exits 2.
 - `output: composer.lock` or the baseline path no longer empties that file before lockrot reads
-  it. lockrot refuses such a path, and the file stays as it was.
+  it. The step fails before lockrot runs, and the file stays as it was.
 - A file at the `output` path that lockrot did not replace in this run is not logged as written,
   rewritten for annotations or published as the job summary. Such a file comes from an earlier
   run, when lockrot exits before it writes, for example under `LOCKROT_DISABLE`.

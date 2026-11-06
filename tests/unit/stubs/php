@@ -3,6 +3,10 @@
 # report whose exit code is $PHP_STUB_EXIT, and writes a markdown summary or the canned report
 # where --output asks for one.
 printf '%s\n' "$*" >> "${PHP_STUB_LOG:-/dev/null}"
+# The action reads composer.json with PHP's json_decode: the real PHP that helpers.bash found runs it.
+case "$*" in
+  *json_decode*) [ -n "${PHP_STUB_REAL:-}" ] && exec "$PHP_STUB_REAL" "$@"; exit 127 ;;
+esac
 if [ "${1:-}" = "-r" ]; then
   case $2 in *PHP_VERSION_ID*) exit "${PHP_STUB_TOO_OLD:-0}" ;; esac
   printf '8.4.0'

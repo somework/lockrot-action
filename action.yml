@@ -50,18 +50,20 @@ inputs:
     description: >-
       Report format: github (annotations), table, json, sarif, gitlab, markdown or html. Empty
       runs github. The action always passes --format, because it names, prints and rewrites the
-      report by its format, so extra.lockrot.format does not apply.
+      report by its format, so extra.lockrot.format does not apply. A --format in args fails the
+      step before lockrot runs.
     required: false
     default: github
   output:
     description: >-
       Where to write the report, relative to the workspace or absolute. Empty keeps it in a
       directory of the step's own under RUNNER_TEMP, so a later step of the job does not replace
-      it. Either way the path is the report output. From lockrot 0.13.0 the action
-      passes it as --output. lockrot then refuses composer.json, composer.lock and the baseline
-      there with exit 2, and writes nothing. With --explain in args, or with an older lockrot, the
-      action copies stdout to the path after a run that exits 0 or 1, and nothing refuses those
-      files.
+      it. Either way the path is the report output. The step fails before lockrot runs when the
+      path names a composer.json or composer.lock, the manifest or lock that COMPOSER names, or a
+      baseline: the baseline input, a --baseline in args, and extra.lockrot.baseline in the
+      manifest, else lockrot-baseline.json. From lockrot 0.13.0 the action passes the path as --output. With
+      --explain in args, or with an older lockrot, the action copies stdout to the path after a
+      run that exits 0 or 1.
     required: false
     default: ''
   dev:
@@ -85,7 +87,8 @@ inputs:
   baseline:
     description: >-
       Baseline file to read, relative to composer.json (--baseline). When empty, an
-      extra.lockrot.baseline in composer.json replaces the default file lockrot-baseline.json.
+      extra.lockrot.baseline in composer.json, or in the manifest that COMPOSER names, replaces
+      the default file lockrot-baseline.json.
     required: false
     default: ''
   generate-baseline:
@@ -101,7 +104,9 @@ inputs:
       Extra command-line options passed to lockrot as given, split on whitespace. The action
       passes the lockrot command name first, so a value can follow its option after a space. From
       lockrot 0.13.0, an option lockrot does not know, or a word that is no option value, fails
-      the step with exit 2. An older lockrot exits 1 there. The action always passes --format, so
+      the step with exit 2. An older lockrot exits 1 there. A --format here fails the step before
+      lockrot runs: set the format input instead. A -d or --working-dir here fails the step before
+      lockrot runs too: set the working-directory input instead. The action always passes --format, so
       --explain=vendor/package needs format table or json and exits 2 with any other format. It
       also exits 2 with generate-baseline set to true. lockrot takes --fail-on, --baseline and
       --target-php once only, so one of them here exits 2 when the input of the same name is set.
@@ -126,7 +131,9 @@ inputs:
     required: false
     default: ''
   cache:
-    description: Cache Composer repository metadata and lockrot's GitHub responses between runs.
+    description: >-
+      Cache Composer repository metadata and lockrot's repository-activity answers from GitHub,
+      GitLab and Bitbucket between runs.
     required: false
     default: 'true'
   summary:
@@ -146,9 +153,13 @@ outputs:
     description: >-
       lockrot exit code. 0: no finding failed fail-on, and strict-network did not trip. 1: a
       finding failed fail-on, or strict-network tripped. 2: lockrot could not run or finish, for
-      an input, configuration or usage error, or a file that it could not write. Empty when the
-      action fails before it sets the output. Examples are a failed download or sha256 check, an
-      unknown format, a line break in an input and a missing lock.
+      an input, configuration or usage error, or a file that it could not write. Any other code
+      is a setup failure, and the step fails on it: PHP stopped lockrot, for example 255 on a
+      fatal error such as an exhausted memory_limit, or the process was killed, for example 137
+      on an out-of-memory kill. Empty when the action fails before it sets the output. Examples
+      are a failed download or sha256 check, an unknown format, a line break in an input and a
+      missing lock. The refusals before lockrot runs are examples too: an output that names a
+      protected file, and a --format, -d or --working-dir in args.
     value: ${{ steps.run.outputs.exit-code }}
   report:
     description: >-

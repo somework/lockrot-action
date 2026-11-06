@@ -192,7 +192,8 @@ jobs:
         run: |
           set -eux
           [ "$OUTCOME" = "failure" ]
-          [ "$EXIT_CODE" = "2" ]
+          # The action refuses the path before lockrot runs, so the step sets no exit code.
+          [ -z "$EXIT_CODE" ]
           git diff --exit-code -- tests/fixtures/project/composer.lock
 
       - name: Baseline accepts today's findings

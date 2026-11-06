@@ -77,6 +77,10 @@ main() {
     set +f
     args+=("${extra[@]}")
   fi
+  ! has_option --format ${extra[@]+"${extra[@]}"} \
+    || fail "args sets --format, which replaces the format the action prints, names and rewrites the report by. Set the format input instead"
+  ! has_working_dir ${extra[@]+"${extra[@]}"} \
+    || fail "args sets the working directory (-d or --working-dir), which moves the project away from the files the action checks and annotates. Set the working-directory input instead"
 
   local explain=false
   ! has_option --explain ${extra[@]+"${extra[@]}"} || explain=true
@@ -88,6 +92,7 @@ main() {
       /*|[A-Za-z]:/*) ;;
       *) report="$(native_path "${GITHUB_WORKSPACE:-$PWD}")/${report}" ;;
     esac
+    refuse_project_file "$report" "$work_dir" ${extra[@]+"${extra[@]}"}
   else
     # A directory of this step's own: a later step of the job must not replace this report. Mode
     # 755 as for RUNNER_TEMP/lockrot, so a later step that runs as another user can read it.
@@ -97,8 +102,8 @@ main() {
     report="${step_dir}/report.$(report_extension "$format")"
   fi
   mkdir -p "$(dirname "$report")"
-  # From lockrot 0.13.0 the report goes through --output, so lockrot refuses a target such as
-  # composer.lock or the baseline and writes nothing. --explain refuses --output, and an older
+  # From lockrot 0.13.0 the report goes through --output. lockrot's own check of the target is the
+  # second line of defence, after refuse_project_file. --explain refuses --output, and an older
   # lockrot has none, so both get stdout copied there after a run that exits 0 or 1.
   local stdout_file report_by_output=false report_id=""
   stdout_file="${SCRATCH_DIR}/stdout.$(report_extension "$format")"
@@ -119,7 +124,10 @@ main() {
   local summary_wanted=false summary_file="" summary_temp=""
   if is_true "${INPUT_SUMMARY:-true}" && [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ "$generate_baseline" = false ]; then
     if [ "$explain" = true ]; then
-      log "job summary skipped: --explain explains one package in the step log and the report file"
+      case "$format" in
+        table) log "job summary skipped: with --explain, the explanation is in the step log and the report file" ;;
+        *) log "job summary skipped: with --explain, the explanation is in the report file" ;;
+      esac
     else
       summary_wanted=true
     fi
@@ -175,7 +183,9 @@ main() {
       *) log "${format} report written to ${report} ($(wc -c < "$report" | tr -d ' ') bytes)" ;;
     esac
   fi
-  if [ "$code" -gt 1 ]; then
+  if [ "$code" -gt 2 ]; then
+    warn "lockrot exited with ${code}, which is no lockrot exit code: PHP stopped it, for example on a fatal error such as an exhausted memory_limit, or the process was killed. The step fails as a setup failure"
+  elif [ "$code" -gt 1 ]; then
     warn "lockrot exited with ${code}; see the log above for the reason"
   fi
 
@@ -199,6 +209,161 @@ main() {
 rewrite_failed() {
   set_output exit-code "$2"
   fail "could not rewrite the annotation paths in $1"
+}
+
+# Fails when report path $1 names a file that lockrot reads or that the baseline is, as lockrot
+# refuses for --output: --explain and a lockrot older than 0.13.0 get stdout copied there instead.
+# $2 is the working directory, and the rest are the args words. Composer reads COMPOSER relative to
+# the working directory, and every baseline is relative to the manifest's directory.
+refuse_project_file() {
+  local report=$1 project manifest lock base candidate name file key i
+  project=$(cd -P "$2" 2> /dev/null && pwd -P) || return 0
+  shift 2
+  manifest=$(native_path "$(trim "${COMPOSER:-}")")
+  [ -n "$manifest" ] || manifest=composer.json
+  lock=$(composer_lock_name)
+  case "$manifest" in /*|[A-Za-z]:/*) ;; *) manifest="${project}/${manifest}" ;; esac
+  case "$lock" in /*|[A-Za-z]:/*) ;; *) lock="${project}/${lock}" ;; esac
+  base=$(dirname "$manifest")
+  local -a baselines=("$(trim "${INPUT_BASELINE:-}")" "$(configured_baseline "$manifest")")
+  while IFS= read -r file; do
+    baselines+=("$file")
+  done < <(option_values --baseline "$@")
+  # Each protected path is resolved once: every resolution forks, and forks are slow under Git Bash.
+  local -a protected=() keys=() reasons=()
+  for file in "${project}/composer.json" "${project}/composer.lock" "$manifest" "$lock"; do
+    protected+=("$file")
+    keys+=("$(path_key "$file")")
+    reasons+=("which is ${file}, a file that lockrot reads")
+  done
+  for file in "${baselines[@]}"; do
+    [ -n "$file" ] || continue
+    file=$(native_path "$file")
+    case "$file" in /*|[A-Za-z]:/*) ;; *) file="${base}/${file}" ;; esac
+    protected+=("$file")
+    keys+=("$(path_key "$file")")
+    reasons+=("which is the baseline file ${file}")
+  done
+  while IFS= read -r candidate; do
+    name=$(basename "$candidate" | tr '[:upper:]' '[:lower:]')
+    case "$name" in
+      composer.json|composer.lock) fail "the output input names ${report}, a ${name} that lockrot reads. The action writes no report there" ;;
+    esac
+    key=$(path_key "$candidate")
+    i=0
+    while [ "$i" -lt "${#protected[@]}" ]; do
+      if [ "$candidate" -ef "${protected[i]}" ] || [ "$key" = "${keys[i]}" ]; then
+        fail "the output input names ${report}, ${reasons[i]}. The action writes no report there"
+      fi
+      i=$((i + 1))
+    done
+  done < <(link_chain "$report")
+}
+
+# extra.lockrot.baseline from manifest $1, else lockrot-baseline.json. The value carries a marker,
+# so a PHP startup line on stdout is never read as the value.
+configured_baseline() {
+  local value="" code=0
+  if [ -f "$1" ]; then
+    # shellcheck disable=SC2016 # PHP code, expanded by PHP
+    value=$(php -d display_startup_errors=0 -d display_errors=stderr -r '$j = json_decode((string) file_get_contents($argv[1]), true); $b = $j["extra"]["lockrot"]["baseline"] ?? null; if (is_string($b)) { echo "lockrot-baseline=", $b, "\n"; }' -- "$1" 2> /dev/null) || code=$?
+    if [ "$code" -ne 0 ]; then
+      # stderr, as for fail: stdout is the value.
+      warn "could not read extra.lockrot.baseline from $1 (php exited with ${code}); the output check protects lockrot-baseline.json there" >&2
+      value=""
+    fi
+    value=$(printf '%s\n' "$value" | sed -n 's/^lockrot-baseline=//p' | head -n 1)
+  fi
+  printf '%s\n' "${value:-lockrot-baseline.json}"
+}
+
+# The values of option $1 in the words after it, joined by `=` or after a space, one per line.
+option_values() {
+  local name=$1 argument take=false
+  shift
+  for argument in "$@"; do
+    if [ "$take" = true ]; then
+      printf '%s\n' "$argument"
+      take=false
+      continue
+    fi
+    case "$argument" in
+      "$name") take=true ;;
+      "$name"=*) printf '%s\n' "${argument#"$name"=}" ;;
+    esac
+  done
+}
+
+# $1, then each file its symlinks point at, one per line: a write to $1 lands on the last one.
+LINK_HOPS=40
+link_chain() {
+  local path=$1 target hops=0
+  printf '%s\n' "$path"
+  while [ -L "$path" ] && [ "$hops" -lt "$LINK_HOPS" ]; do
+    target=$(native_path "$(readlink "$path")") || return 0
+    case "$target" in /*|[A-Za-z]:/*) path=$target ;; *) path="$(dirname "$path")/${target}" ;; esac
+    printf '%s\n' "$path"
+    hops=$((hops + 1))
+  done
+}
+
+# The resolved spelling of path $1 in lower case. Two paths with one key name one file, unless the
+# filesystem tells letter case apart. A missing file in another case is one file on macOS and
+# Windows, and refusing it on Linux too costs only a rename of the report.
+path_key() {
+  resolved_path "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+# Absolute path $1 the way the system reads it once `mkdir -p` makes its missing directories: the
+# nearest existing directory resolved physically, and `.` and `..` folded in the part below it. A
+# fold can reach an existing directory again, so this repeats until nothing changes.
+resolved_path() {
+  local path=$1 next i
+  for i in 1 2 3 4 5 6 7 8; do
+    next=$(resolve_once "$path")
+    [ "$next" != "$path" ] || break
+    path=$next
+  done
+  printf '%s\n' "$path"
+}
+
+resolve_once() {
+  local dir=$1 resolved segment
+  local -a tail=() folded=()
+  until resolved=$(cd -P "$dir" 2> /dev/null && pwd -P); do
+    tail=("$(basename "$dir")" ${tail[@]+"${tail[@]}"})
+    dir=$(dirname "$dir")
+  done
+  resolved=${resolved%/}
+  for segment in ${tail[@]+"${tail[@]}"}; do
+    case "$segment" in
+      .|'') ;;
+      ..)
+        if [ "${#folded[@]}" -gt 0 ]; then
+          unset 'folded[${#folded[@]}-1]'
+          folded=(${folded[@]+"${folded[@]}"})
+        else
+          resolved=$(dirname "${resolved:-/}")
+          resolved=${resolved%/}
+        fi
+        ;;
+      *) folded+=("$segment") ;;
+    esac
+  done
+  printf '%s' "$resolved"
+  for segment in ${folded[@]+"${folded[@]}"}; do printf '/%s' "$segment"; done
+  [ -n "$resolved" ] || [ "${#folded[@]}" -gt 0 ] || printf '/'
+  printf '\n'
+}
+
+# Whether the args words give lockrot's working-directory option: `-d dir`, `-ddir`,
+# `--working-dir dir` or `--working-dir=dir`.
+has_working_dir() {
+  local argument
+  for argument in "$@"; do
+    case "$argument" in -d*|--working-dir|--working-dir=*) return 0 ;; esac
+  done
+  return 1
 }
 
 # The file id of $1 itself, not of a symlink's target.
