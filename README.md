@@ -305,8 +305,10 @@ can drop, so `--fail-on=high` reads a high advisory with a reachable fix in it a
 - **Pinned dependencies.** The two actions this one uses — `actions/cache` and
   `shivammathur/setup-php` — are pinned by commit SHA, as is everything in this repository's own
   workflows. Dependabot proposes updates after a seven-day cooldown. setup-php is called without a
-  token, so it never writes the workflow token into Composer's global `auth.json` for later steps
-  to pick up.
+  token, and its step clears `GITHUB_TOKEN` and `COMPOSER_TOKEN`. So setup-php writes no token
+  from the job's `env` into Composer's global `auth.json` for later steps to pick up. It still
+  writes a `COMPOSER_AUTH_JSON` or `PACKAGIST_TOKEN` from that `env`, which are Composer
+  credentials that the job sets.
 - **Network.** `github.com` release assets, the Composer repositories configured in the project
   (`repo.packagist.org` by default), the repository hosts the locked packages come from
   (`api.github.com`, GitLab and `api.bitbucket.org`), and GitHub's own cache service through
