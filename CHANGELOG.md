@@ -85,9 +85,11 @@ All notable changes to this action are documented here. The format follows
   as a finding that failed `fail-on`. A misspelt option followed by a value exits 2.
 - `output: composer.lock` or the baseline path no longer empties that file before lockrot reads
   it. The step fails before lockrot runs, and the file stays as it was.
-- A file at the `output` path that lockrot did not replace in this run is not logged as written,
-  rewritten for annotations or published as the job summary. Such a file comes from an earlier
-  run, when lockrot exits before it writes, for example under `LOCKROT_DISABLE`.
+- Before lockrot runs, the action removes a file at the `output` path, a symlink itself and not its
+  target. When lockrot exits before it writes, for example on exit 2 or under `LOCKROT_DISABLE`,
+  the path holds no file, so an `if: always()` upload fails instead of publishing an earlier run's
+  report as this run's. Such a file was also logged as written, rewritten for annotations or
+  published as the job summary. The `report` output says that the file can be missing.
 - With `format: markdown`, the job summary keeps the run's own offline note, as with the other
   formats.
 - The version check reads the last line of stdout only, so a PHP startup warning no longer fails
