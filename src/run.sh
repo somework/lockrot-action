@@ -219,7 +219,8 @@ rewrite_failed() {
 # the working directory, and every baseline is relative to the manifest's directory.
 refuse_project_file() {
   local report=$1 project manifest lock base candidate name file key i
-  project=$(cd -P "$2" 2> /dev/null && pwd -P) || return 0
+  project=$(cd -P "$2" 2> /dev/null && pwd -P) \
+    || fail "could not enter the working directory $2, so the output check cannot tell whether output names a project file"
   shift 2
   manifest=$(native_path "$(trim "${COMPOSER:-}")")
   [ -n "$manifest" ] || manifest=composer.json

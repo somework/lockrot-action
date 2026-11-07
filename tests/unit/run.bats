@@ -344,6 +344,21 @@ exit-code=0"
   grep -qF -- 'lockrot wrote no json report' <<< "$output"
 }
 
+@test "a working directory that the step cannot enter fails the output check and leaves the output file alone" {
+  # Arrange: setup.sh fails first in the composite action, so run.sh is driven on its own here.
+  export INPUT_WORKING_DIRECTORY=missing INPUT_OUTPUT=composer.json
+  printf '{"kept": true}\n' > "$GITHUB_WORKSPACE/composer.json"
+
+  # Act
+  run_run
+
+  # Assert
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not enter the working directory"*"missing"* ]] || false
+  [ "$(cat "$GITHUB_WORKSPACE/composer.json")" = '{"kept": true}' ]
+  [ -z "$(output_value exit-code)" ]
+}
+
 @test "an output path that the action cannot clear fails the step before lockrot runs" {
   export INPUT_FORMAT=sarif INPUT_OUTPUT=build/lockrot.sarif
   mkdir -p "$GITHUB_WORKSPACE/build/lockrot.sarif"
