@@ -50,8 +50,8 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   symlink itself and not its target. lockrot can exit before it writes, for example on exit 2 or
   under `LOCKROT_DISABLE`. The path then holds no file, so an `if: always()` upload of it fails.
   It published an earlier run's report as this run's. Such a file was also logged as written,
-  rewritten for annotations or published as the job summary. A step that fails before these checks
-  leaves the file. Action: keep no file of your own at the `output` path, and let a failed upload
+  rewritten for annotations or published as the job summary. With `--explain` in `args`, an empty
+  stdout is not copied to the path. A step that fails before these checks leaves the file. Action: keep no file of your own at the `output` path, and let a failed upload
   stand, or guard it with `hashFiles()`.
 - **Breaking:** the step that installs PHP with setup-php clears `GITHUB_TOKEN` and
   `COMPOSER_TOKEN` in its own environment. The action gives setup-php no token, and setup-php then

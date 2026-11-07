@@ -172,7 +172,8 @@ main() {
       report_written=true
       [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir" || rewrite_failed "$report" "$code"
     fi
-  elif [ "$code" -le 1 ]; then
+  # An explanation is never empty, so empty stdout means lockrot exited before it, as under LOCKROT_DISABLE.
+  elif [ "$code" -le 1 ] && { [ "$explain" = false ] || [ -s "$stdout_file" ]; }; then
     cp "$stdout_file" "$report"
     report_written=true
   fi

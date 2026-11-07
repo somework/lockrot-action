@@ -330,6 +330,20 @@ exit-code=0"
   [ ! -e "$GITHUB_WORKSPACE/build/lockrot.json" ]
 }
 
+@test "with --explain, a run that exits 0 and prints nothing leaves no file at the output path" {
+  # Like LOCKROT_DISABLE=1: lockrot exits 0 before it prints the explanation.
+  export INPUT_FORMAT=json INPUT_OUTPUT=build/lockrot.json INPUT_ARGS='--explain acme/pkg'
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(output_value exit-code)" = "0" ]
+  [ ! -e "$GITHUB_WORKSPACE/build/lockrot.json" ]
+  grep -qF -- 'lockrot wrote no json report' <<< "$output"
+}
+
 @test "an output path that the action cannot clear fails the step before lockrot runs" {
   export INPUT_FORMAT=sarif INPUT_OUTPUT=build/lockrot.sarif
   mkdir -p "$GITHUB_WORKSPACE/build/lockrot.sarif"
