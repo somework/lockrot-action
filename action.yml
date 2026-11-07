@@ -18,27 +18,55 @@ inputs:
     required: false
     default: ''
   working-directory:
-    description: Directory that holds composer.json and composer.lock, relative to the workspace.
+    description: >-
+      Directory where lockrot runs, relative to the workspace. It holds composer.json and
+      composer.lock, unless COMPOSER names another manifest. COMPOSER is read relative to this
+      directory.
     required: false
     default: '.'
   fail-on:
     description: >-
-      Verdict or priority that fails the step (exit 1): none, stale, old-promise, left-behind,
-      pinned, silent, abandoned, or low, medium, high, critical; unchecked fails on a finding whose
-      check did not run. Empty leaves it to extra.lockrot.fail-on in
-      composer.json, which defaults to none.
+      Comma-separated values that fail the step (exit 1), at most one of each kind. A grade:
+      critical, high, medium or low, which fails on that grade or a higher one. A flag: abandoned,
+      silent, pinned, left-behind, old-promise, stale or capped. A flag fails on itself and on
+      each flag before it in this order. A vulnerable value: vulnerable (any severity),
+      vulnerable-medium, vulnerable-high or vulnerable-critical, which fails on that severity or a
+      higher one. unchecked fails on a finding whose check did not run. none stands alone.
+      Example: left-behind,vulnerable-high. Empty leaves it to LOCKROT_FAIL_ON, then to
+      extra.lockrot.fail-on in the manifest, which defaults to none. See https://lockrot.dev/ci/
+      for choosing the values.
     required: false
     default: ''
   target-php:
-    description: PHP version the project targets for the old-promise check, e.g. 8.4. Empty uses config.platform.php or the running PHP.
+    description: >-
+      PHP version the project runs on, e.g. 8.4. It decides old-promise, the branch left-behind
+      names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether
+      the lock installs on it. Empty leaves it to LOCKROT_TARGET_PHP, then to
+      extra.lockrot.target-php in the manifest, then to config.platform.php, then to the running
+      PHP.
     required: false
     default: ''
   format:
-    description: 'Report format: github (annotations), table, json, sarif, gitlab, markdown or html.'
+    description: >-
+      Report format: github (annotations), table, json, sarif, gitlab, markdown or html. Empty
+      runs github. The action always passes --format, because it names, prints and rewrites the
+      report by its format, so extra.lockrot.format does not apply. A --format in args fails the
+      step before lockrot runs.
     required: false
     default: github
   output:
-    description: Where to write the report, relative to the workspace or absolute. Empty keeps it under RUNNER_TEMP; the path is the report output either way.
+    description: >-
+      Where to write the report, relative to the workspace or absolute. Empty keeps it in a
+      directory of the step's own under RUNNER_TEMP, so a later step of the job does not replace
+      it. Either way the path is the report output. The step fails before lockrot runs when the
+      path names a composer.json or composer.lock, the manifest or lock that COMPOSER names, or a
+      baseline: the baseline input, a --baseline in args, and extra.lockrot.baseline in the
+      manifest, else lockrot-baseline.json. Once that check passes, the action removes a file at
+      the path before lockrot runs. When lockrot then writes no report, for example on exit 2,
+      the path holds no file. A directory at the path fails the step with "could not remove the
+      earlier report at <path>". From lockrot 0.13.0 the action passes the path as --output. With
+      --explain in args, or with an older lockrot, the action copies stdout to the path after a
+      run that exits 0 or 1.
     required: false
     default: ''
   dev:
@@ -50,23 +78,53 @@ inputs:
     required: false
     default: 'false'
   strict-network:
-    description: Exit 1 when a Composer repository or GitHub could not be reached (--strict-network).
+    description: >-
+      Exit 1 when a run note counts as a network failure (--strict-network). Such a note says
+      that lockrot could not read what it asked for. A Composer repository or a repository host
+      (GitHub, GitLab, Bitbucket) did not answer, answered with an error or stopped at a rate
+      limit. A repository can also list a locked package but return no versions of it. An offline
+      run that finds no cached metadata for a locked package writes such a note too. See
+      https://lockrot.dev/notes/.
     required: false
     default: 'false'
   baseline:
-    description: Baseline file to read, relative to composer.json (--baseline). Empty uses extra.lockrot.baseline or lockrot-baseline.json.
+    description: >-
+      Baseline file to read, relative to composer.json (--baseline). When empty, an
+      extra.lockrot.baseline in composer.json, or in the manifest that COMPOSER names, replaces
+      the default file lockrot-baseline.json.
     required: false
     default: ''
   generate-baseline:
-    description: Write this run's findings to the baseline file and exit 0 (--generate-baseline).
+    description: >-
+      Write this run's findings to the baseline file (--generate-baseline). The step exits 0
+      whatever fail-on says, 1 only when strict-network trips, and 2 when lockrot cannot run or
+      finish. From lockrot 0.13.0 the report file holds this run's report. stdout stays empty,
+      so the step prints no annotations, and the action writes no job summary.
     required: false
     default: 'false'
   args:
-    description: Extra command-line options passed to lockrot as given, split on whitespace. An option lockrot does not know fails the step with exit 2.
+    description: >-
+      Extra command-line options passed to lockrot as given, split on whitespace. The action
+      passes the lockrot command name first, so a value can follow its option after a space. From
+      lockrot 0.13.0, an option lockrot does not know, or a word that is no option value, fails
+      the step with exit 2. An older lockrot exits 1 there. A --format here fails the step before
+      lockrot runs: set the format input instead. A -d or --working-dir here fails the step before
+      lockrot runs too: set the working-directory input instead. The action always passes --format, so
+      --explain=vendor/package needs format table or json and exits 2 with any other format. It
+      also exits 2 with generate-baseline set to true. lockrot takes --fail-on, --baseline and
+      --target-php once only, so one of them here exits 2 when the input of the same name is set.
     required: false
     default: ''
   github-token:
-    description: Token lockrot uses for GitHub repository-activity checks. Without one the checks are capped at 50 packages per run.
+    description: >-
+      Token for repository-activity checks on github.com, passed to lockrot as GITHUB_TOKEN.
+      Without a token, lockrot asks github.com only about packages already stale on release age,
+      and only up to a budget of them. A package that it does not ask about carries S10, unless
+      it is marked abandoned, so the unchecked value of fail-on fails on it. See
+      https://lockrot.dev/notes/#repository_activity_anonymous_cap. lockrot sends the token only
+      from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set
+      LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env instead. A
+      LOCKROT_GITHUB_TOKEN in that env wins over this input.
     required: false
     default: ${{ github.token }}
   php-version:
@@ -76,20 +134,41 @@ inputs:
     required: false
     default: ''
   cache:
-    description: Cache Composer repository metadata and lockrot's GitHub responses between runs.
+    description: >-
+      Cache Composer repository metadata and lockrot's repository-activity answers from GitHub,
+      GitLab and Bitbucket between runs.
     required: false
     default: 'true'
   summary:
-    description: Add the report, rendered as markdown, to the job summary (skipped above 1 MB, the runner's limit).
+    description: >-
+      Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the
+      action passes --markdown-max-bytes=1000000 unless args sets it, so lockrot leaves rows out of
+      a larger report to keep within the runner's 1 MB limit. That cap also applies to the report
+      file of format markdown, and to any markdown --output file in args. With an older lockrot, a
+      summary above 1 MB is skipped. Skipped with --explain in args, whose explanation is in the
+      report file (and in the step log for format table). Skipped with generate-baseline set to
+      true.
     required: false
     default: 'true'
 
 outputs:
   exit-code:
-    description: 'lockrot exit code: 0 clean or below fail-on, 1 fail-on reached, 2 tool or configuration error.'
+    description: >-
+      lockrot exit code. 0: no finding failed fail-on, and strict-network did not trip. 1: a
+      finding failed fail-on, or strict-network tripped. 2: lockrot could not run or finish, for
+      an input, configuration or usage error, or a file that it could not write. Any other code
+      is a setup failure, and the step fails on it: PHP stopped lockrot, for example 255 on a
+      fatal error such as an exhausted memory_limit, or the process was killed, for example 137
+      on an out-of-memory kill. Empty when the action fails before it sets the output. Examples
+      are a failed download or sha256 check, an unknown format, a line break in an input and a
+      missing lock. The refusals before lockrot runs are examples too: an output that names a
+      protected file, and a --format, -d or --working-dir in args.
     value: ${{ steps.run.outputs.exit-code }}
   report:
-    description: Path of the report file in the requested format.
+    description: >-
+      Path of the report file in the requested format. Without the output input, each step gets
+      a path of its own. The file is missing when lockrot ran and wrote no report in this step,
+      for example on exit 2.
     value: ${{ steps.run.outputs.report }}
   version:
     description: The lockrot version that ran.
@@ -115,13 +194,20 @@ runs:
     - name: Install PHP
       if: steps.setup.outputs.php-needed == 'true'
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      # setup-php writes the token it is given into Composer's global auth.json as github-oauth,
+      # which would hand the workflow token to every later step, and lockrot would send Composer's
+      # header instead of the github-token input. With an empty github-token input, setup-php takes
+      # COMPOSER_TOKEN or GITHUB_TOKEN from the environment, so both are cleared for this step only.
+      env:
+        GITHUB_TOKEN: ''
+        COMPOSER_TOKEN: ''
       with:
         php-version: ${{ inputs.php-version || 'latest' }}
         coverage: none
-        # setup-php writes the token it is given into Composer's global auth.json as github-oauth,
-        # which would hand the workflow token to every later step and make lockrot send two
-        # Authorization headers (Composer's and its own) to api.github.com. lockrot gets its token
-        # through the github-token input instead.
+        # An empty tools input reads TOOLS from the environment. Without a token, a tool that setup-php
+        # resolves through the GitHub API can fail on the anonymous rate limit, and a composer:<version>
+        # there would choose the Composer that later steps get.
+        tools: composer
         github-token: ''
 
     - id: restore

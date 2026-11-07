@@ -124,6 +124,66 @@ evil=1"
   [[ "$output" == *"no composer.lock in 'elsewhere' (working-directory)"* ]]
 }
 
+@test "COMPOSER in the environment names the lock that is checked and hashed" {
+  rm "$GITHUB_WORKSPACE/project/composer.lock"
+  printf '{"packages": ["alt"]}\n' > "$GITHUB_WORKSPACE/project/alt.lock"
+  expected_hash=$(shasum -a 256 "$GITHUB_WORKSPACE/project/alt.lock" | cut -c1-16)
+  export COMPOSER=alt.json
+  run_setup
+  [ "$status" -eq 0 ]
+  [ "$(output_value lock-hash)" = "$expected_hash" ]
+}
+
+@test "a COMPOSER that names a subdirectory manifest from the root checks and hashes that subdirectory's lock" {
+  mkdir -p "$GITHUB_WORKSPACE/apps/api"
+  printf '{}\n' > "$GITHUB_WORKSPACE/apps/api/composer.json"
+  printf '{"packages": ["api"]}\n' > "$GITHUB_WORKSPACE/apps/api/composer.lock"
+  expected_hash=$(shasum -a 256 "$GITHUB_WORKSPACE/apps/api/composer.lock" | cut -c1-16)
+  export INPUT_WORKING_DIRECTORY=. COMPOSER=apps/api/composer.json
+  run_setup
+  [ "$status" -eq 0 ]
+  [ "$(output_value lock-hash)" = "$expected_hash" ]
+}
+
+@test "a COMPOSER path that repeats working-directory names the doubled lock path in the setup error" {
+  mkdir -p "$GITHUB_WORKSPACE/apps/api"
+  printf '{}\n' > "$GITHUB_WORKSPACE/apps/api/composer.json"
+  printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/apps/api/composer.lock"
+  export INPUT_WORKING_DIRECTORY=apps/api COMPOSER=apps/api/composer.json
+  run_setup
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::lockrot-action: no apps/api/composer.lock in 'apps/api' (working-directory): apps/api/apps/api/composer.lock does not exist. COMPOSER is relative to working-directory"* ]] || false
+  [ ! -s "$CURL_STUB_LOG" ]
+}
+
+@test "a missing lock that COMPOSER names is reported by that name" {
+  export COMPOSER=alt.json
+  run_setup
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no alt.lock in 'project' (working-directory)"* ]]
+}
+
+@test "a missing working-directory is a setup error also when an absolute COMPOSER names an existing lock" {
+  export INPUT_WORKING_DIRECTORY=missing-dir
+  export COMPOSER="$GITHUB_WORKSPACE/project/composer.json"
+  run_setup
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::lockrot-action: the working-directory 'missing-dir' is not a directory that the step can enter"* ]] || false
+  [ ! -s "$CURL_STUB_LOG" ]
+}
+
+@test "a working-directory that the step cannot enter is a setup error" {
+  mkdir "$GITHUB_WORKSPACE/closed"
+  chmod 000 "$GITHUB_WORKSPACE/closed"
+  export INPUT_WORKING_DIRECTORY=closed
+  export COMPOSER="$GITHUB_WORKSPACE/project/composer.json"
+  run_setup
+  chmod 755 "$GITHUB_WORKSPACE/closed"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"::error::lockrot-action: the working-directory 'closed' is not a directory that the step can enter"* ]] || false
+  [ ! -s "$CURL_STUB_LOG" ]
+}
+
 @test "a missing download is reported" {
   export INPUT_VERSION=0.0.1
   run_setup

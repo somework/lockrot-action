@@ -6,6 +6,180 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+Runs lockrot 0.14.0. Read the **Breaking:** entries if your workflow keeps a baseline, gates on
+`fail-on`, reads the report, passes `args` or reads the default report path. The full list of
+lockrot changes is in the [0.14.0 release notes](https://github.com/somework/lockrot/releases/tag/v0.14.0).
+
+### Changed
+
+- **Breaking:** lockrot 0.14 reads baseline-2 only, and a baseline-1 file exits 2, which fails the
+  step. Action: review the findings, then run the action once with `generate-baseline: true`. That
+  run overwrites the file, and `known_since` starts again on that day.
+- **Breaking:** the verdict is a grade (`critical` … `low`, or `ok`, `finished` or `unknown` at 0)
+  scored from the flags, and a finding lists every flag that fired. A counted advisory flags the
+  package `vulnerable`, and the new flag `capped` marks a release that stops below the newest PHP
+  minor that the root allows. So a `fail-on` gate can fail where lockrot 0.13 passed. Action: run
+  once with `fail-on: none`, compare the findings, then set the gate.
+- **Breaking:** `fail-on: unchecked` also fails when lockrot did not read the advisories or an
+  advisory's release data, and when it cannot ask a repository host. It also fails on a package
+  from vcs or of an unknown origin. Action: follow the `unchecked` entry of the lockrot 0.14.0
+  release notes, or drop `unchecked` from `fail-on`.
+- **Breaking:** the reports change. `format: json` and the page of `format: html` carry report-2.
+  SARIF and gitlab output hold one record per flag, and SARIF also one per advisory. A
+  `format: github` annotation title reads `lockrot: <verdict> — <flags>`. Action: in a step that
+  reads a json report, check `."$schema" == "https://lockrot.dev/schema/report-2.json"` first. In
+  SARIF, check `runs[0].properties.lockrot_schema == 2`. Key an annotation on its file and line,
+  not on its title.
+- **Breaking:** lockrot 0.14 sends `GITHUB_TOKEN`, and so the `github-token` input, to github.com
+  only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, the run
+  is anonymous on github.com. Action: set `LOCKROT_GITHUB_TOKEN` to a github.com token in the
+  step's or job's `env`. The action does not pass the input as `LOCKROT_GITHUB_TOKEN`, because it
+  cannot tell which host issued the token. The `github-token` texts and the README say so.
+- **Breaking:** without `output`, each action step writes its report in a directory of its own
+  under `RUNNER_TEMP`, so a later step of the same job no longer replaces it. The old default path
+  was `RUNNER_TEMP/lockrot/report.<ext>`. Action: read the path from the `report` output.
+- **Breaking:** the step fails before lockrot runs when `output` names a `composer.json` or
+  `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the
+  `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else
+  `lockrot-baseline.json`. The check follows symlinks and `..`, and compares a missing file in any
+  letter case. With `--explain` in `args`, such a path got the explanation copied over the file,
+  and `output: composer.lock` or the baseline path emptied that file before lockrot read it. The step
+  also fails when PHP cannot read `extra.lockrot.baseline` for this check, or when the check cannot
+  enter `working-directory`. It warned and went on. Action: set
+  `output` to another path.
+- **Breaking:** once the `output` checks pass, the action removes a file at the `output` path
+  before lockrot runs, a symlink itself and not its target. A symlink at the path is then replaced
+  by a regular file. v1.1.0 redirected stdout into the path, so it wrote through a symlink into
+  its target. When lockrot 0.13.0 or newer writes no report, for example on exit 2 or under
+  `LOCKROT_DISABLE`, the path holds no file. v1.1.0 left an empty file there, so an
+  `if: always()` upload of the path now fails. With `--explain` in `args`, an empty stdout is not
+  copied to the path. A lockrot older than 0.13.0 that exits 0 or 1 with an empty stdout still
+  leaves an empty file. A step that fails before these checks leaves the earlier file. A directory
+  at the path fails the step with `could not remove the earlier report at <path>`. Action: keep no
+  file of your own at the `output` path. Let a failed upload stand, or guard it with `hashFiles()`.
+- **Breaking:** the step that installs PHP with setup-php clears `GITHUB_TOKEN` and
+  `COMPOSER_TOKEN` in its own environment. The action gives setup-php no token, and setup-php then
+  took a token from the job's `env` and wrote it into Composer's global `auth.json` as `github-oauth`.
+  Later steps then read it, and lockrot sent it instead of the `github-token` input. The step also
+  passes `tools: composer`, so a `TOOLS` in the job's `env` no longer adds tools to it. Such a
+  `TOOLS` also no longer picks the Composer version that later steps get, such as `composer:2.2`.
+  The step installs the default stable Composer. Action: give a later Composer step its own
+  credential, for example with `COMPOSER_AUTH`. Install other tools or another Composer version
+  with a setup-php step of your own.
+- The job summary comes from the same lockrot run as the report. With lockrot 0.13.0 or newer,
+  the run writes the markdown summary beside it with `--output`. The action no longer runs
+  lockrot a second time offline. The summary now shows that run's own notes, an offline note included when
+  the run was offline. With an older lockrot `version`, the second run stays. With `--explain`
+  in `args`, the action writes no job summary: lockrot refuses `--output` there, and a second
+  offline run showed a whole report whose advisories and gate line could differ from the step.
+  The explanation is in the report file, and in the step log for `format: table`.
+- **Breaking:** the action passes `lockrot` as the command name before the options. A value can
+  follow its option after a space in `args`, such as `--explain vendor/package`. From lockrot
+  0.13.0, a word in `args` that is no option value exits 2. It named another command, such as
+  `self-update`, or none. Action: remove the word, or put its option before it.
+- With lockrot 0.13.0 or newer, the report goes to the `output` path through
+  `--output=<format>:<path>`, not through a shell redirection. Under `generate-baseline`, the report file holds the run's report. With `--explain` in `args`,
+  or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1.
+  lockrot refuses `--output` with `--explain`.
+- The action keeps its own temporary files in a directory of each run under `RUNNER_TEMP`, so no
+  `output` path can name one of them.
+- **Breaking:** with lockrot 0.14.0 or newer and the job summary on, the action passes
+  `--markdown-max-bytes=1000000` unless `args` sets it. lockrot then leaves rows out of a large
+  summary, where the action wrote only a size note. The cap also applies to the report file of
+  `format: markdown`, and to any markdown `--output` file in `args`. Action: to keep a whole
+  markdown file, set `--markdown-max-bytes` in `args`, or set `summary: false`.
+- The `fail-on` input describes the lockrot 0.14.0 values: a comma-separated list of a grade, a
+  flag (`capped` included), a `vulnerable` value and `unchecked`, or `none`. It links the
+  [CI page](https://lockrot.dev/ci/) for choosing them.
+- The `args` input says that `--explain` needs `format: table` or `format: json`, because the
+  action always passes `--format`, and that `--explain` exits 2 with `generate-baseline: true`.
+  It also says that `--fail-on`, `--baseline` or `--target-php` in `args` exits 2 when the input
+  of the same name is set.
+- **Breaking:** a `--format` in `args` fails the step before lockrot runs, with an error that names
+  the `format` input. It replaced the format that the action prints, names and rewrites the report
+  by. Action: set the `format` input.
+- **Breaking:** a `-d` or `--working-dir` in `args`, in any spelling, fails the step before lockrot
+  runs, with an error that names the `working-directory` input. It moved the project away from the
+  files that the action checks and annotates, so an `output` in the other directory could
+  overwrite its baseline. Action: set the `working-directory` input.
+
+### Fixed
+
+- The `exit-code` output and the README say that a code other than 0, 1 and 2 is a setup failure.
+  Examples are 255 from a PHP fatal error and 137 from a killed process. The step fails on it, and its
+  warning says so.
+- The `cache` input and the README say that the cache holds lockrot's repository-activity answers
+  from GitHub, GitLab and Bitbucket, not from GitHub alone.
+- With `--explain` in `args`, the log line for the skipped job summary names the place of the
+  explanation. That is the report file, and also the step log for a format that the step prints.
+- With `format: github` and a `working-directory` other than the root, the annotation rewrite
+  writes its copy to a temporary file with a unique name beside the report. It keeps the report's
+  mode and renames the copy over the report. It wrote and removed `<output>.tmp`, so a directory
+  of that name failed the step without the `exit-code` and `report` outputs. A rewrite that fails
+  now stops the step with an error, sets the `exit-code` output and leaves the report as lockrot
+  wrote it.
+- The `working-directory` texts say that lockrot runs there and that `COMPOSER` is read relative
+  to it. A `COMPOSER` path that repeats `working-directory` fails the setup step with the doubled
+  lock path.
+- A `format` input of whitespace only runs `github`, as an empty one does. It failed the step.
+- The README recipe for a project in a subdirectory sets `COMPOSER: apps/api/composer.json` with
+  the default `working-directory`. SARIF, annotations and gitlab output then name
+  `apps/api/composer.lock`.
+- The README and the `format` input say that the action always passes `--format`, so an empty
+  `format` runs `github` and `extra.lockrot.format` does not apply.
+- The `baseline` texts say that `extra.lockrot.baseline` replaces the default file.
+- The `exit-code` output texts say that the output is empty when the action fails before it sets
+  the output.
+- The `strict-network` texts also name an error answer, a rate limit, and a repository that lists
+  a locked package with no versions.
+- An option value after a space in `args` no longer exits 1, which the `exit-code` output names
+  as a finding that failed `fail-on`. A misspelt option followed by a value exits 2.
+- With `format: markdown`, the job summary keeps the run's own offline note, as with the other
+  formats.
+- The version check reads the last line of stdout only, so a PHP startup warning no longer fails
+  the step.
+- The `generate-baseline`, `strict-network` and `exit-code` texts state lockrot's exit codes:
+  `generate-baseline` exits 1 when `strict-network` trips, and `strict-network` counts every run
+  note that is a network failure.
+- The `target-php` texts name `LOCKROT_TARGET_PHP` and `extra.lockrot.target-php` before
+  `config.platform.php`. The README says that an empty or `false` input passes nothing, so
+  `dev: false` leaves `extra.lockrot.include-dev` in effect.
+- The README states the lockrot 0.14 html page size and the halved score of a development
+  package. It names the Docker image tag of lockrot 0.14, and which lockrot releases make a minor
+  release of the action. The pull-request comment recipe caps the comment with `--markdown-max-bytes`.
+- A lockrot run that exits 0 or 1 without writing the job summary, such as one with
+  `LOCKROT_DISABLE=1`, no longer fails the step. The action skips the summary and sets the
+  `exit-code` and `report` outputs. It failed with a bash error and set no output.
+- The README Docker section passes `-e GITHUB_SERVER_URL` with `-e GITHUB_TOKEN`, as lockrot 0.14
+  needs to keep another host's token from github.com.
+- The README and the inputs state lockrot 0.14 facts: repository activity is read on GitHub,
+  GitLab and Bitbucket. An annotation takes lockrot's mark, so a finding whose fact the baseline
+  covers is a notice. lockrot writes the job summary file that the action asks for. `target-php`
+  also decides the `left-behind` branch, the advisory fix, the move check and the PHP window.
+
+- With `COMPOSER` set in the job's environment, the action reads the lock that Composer pairs
+  with it: `alt.json` gives `alt.lock`. The setup step requires that lock, the cache key hashes
+  it, and its annotations get the `working-directory` prefix. An absolute `COMPOSER` outside
+  `working-directory` leaves the annotations as lockrot writes them. The action required and
+  hashed `composer.lock` whatever `COMPOSER` named.
+- A `working-directory` that does not exist, or that the step cannot enter, fails the setup step. With an absolute `COMPOSER`
+  whose lock exists, the run step failed instead and set `exit-code` to 1, although lockrot never
+  ran.
+- An annotation path keeps a comma, colon or percent sign in `working-directory` or in the lock
+  name. The action escapes the directory and matches the lock as lockrot writes workflow-command
+  properties. Such a `file=` value ended at the comma, or kept no directory prefix.
+- The README and the `generate-baseline` and `summary` inputs say that `generate-baseline: true`
+  prints no annotations and writes no job summary. The README no longer says that the job
+  summary always holds the whole report.
+- The `github-token` texts say what lockrot asks without a token: only packages already stale on
+  release age, up to a budget. Each other package carries S10, unless it is marked abandoned,
+  and `fail-on: unchecked` fails on S10. The texts said that the checks were capped at 50 repositories.
+- The README says that a `LOCKROT_GITHUB_TOKEN` in the step's or job's `env` wins over the
+  `github-token` input, and that a Composer credential for github.com wins over both.
+- The README FAQ no longer states a size of the PHAR.
+- The `ghcr.io/somework/lockrot` image carries brotli-libs 1.2.1-r0 and libcurl 8.23.0-r0, which
+  fix CVE-2026-111497 and CVE-2026-92392. The php base image digest is updated as well.
+
 ## [1.1.0] - 2026-10-02
 
 Runs lockrot 0.13.0. Read the first two entries if your workflow passes `args` or publishes the
