@@ -6,11 +6,47 @@ All notable changes to this action are documented here. The format follows
 
 ## [Unreleased]
 
+Runs lockrot 0.14.0. Read the **Breaking:** entries if your workflow keeps a baseline, gates on
+`fail-on`, reads the report, passes `args` or reads the default report path. The full list of
+lockrot changes is in the [0.14.0 release notes](https://github.com/somework/lockrot/releases/tag/v0.14.0).
+
 ### Changed
 
-- Without `output`, each action step writes its report in a directory of its own under
-  `RUNNER_TEMP`, so a later step of the same job no longer replaces it. The old default path was
-  `RUNNER_TEMP/lockrot/report.<ext>`. Read the path from the `report` output.
+- **Breaking:** lockrot 0.14 reads baseline-2 only, and a baseline-1 file exits 2, which fails the
+  step. Action: review the findings, then run the action once with `generate-baseline: true`. That
+  run overwrites the file, and `known_since` starts again on that day.
+- **Breaking:** the verdict is a grade (`critical` … `low`, or `ok`, `finished` or `unknown` at 0)
+  scored from the flags, and a finding lists every flag that fired. A counted advisory flags the
+  package `vulnerable`, and the new flag `capped` marks a release that stops below the newest PHP
+  minor that the root allows. So a `fail-on` gate can fail where lockrot 0.13 passed. Action: run
+  once with `fail-on: none`, compare the findings, then set the gate.
+- **Breaking:** `fail-on: unchecked` also fails when lockrot did not read the advisories or an
+  advisory's release data, and when it cannot ask a repository host. It also fails on a package
+  from vcs or of an unknown origin. Action: follow the `unchecked` entry of the lockrot 0.14.0
+  release notes, or drop `unchecked` from `fail-on`.
+- **Breaking:** the reports change. `format: json` and the page of `format: html` carry report-2.
+  SARIF and gitlab output hold one record per flag. A `format: github` annotation title reads
+  `lockrot: <verdict> — <flags>`. Action: in a step that reads the report, check
+  `."$schema" == "https://lockrot.dev/schema/report-2.json"` first. Key an annotation on its file
+  and line, not on its title.
+- **Breaking:** lockrot 0.14 sends `GITHUB_TOKEN`, and so the `github-token` input, to github.com
+  only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, the run
+  is anonymous on github.com. Action: set `LOCKROT_GITHUB_TOKEN` to a github.com token in the
+  step's or job's `env`.
+- **Breaking:** without `output`, each action step writes its report in a directory of its own
+  under `RUNNER_TEMP`, so a later step of the same job no longer replaces it. The old default path
+  was `RUNNER_TEMP/lockrot/report.<ext>`. Action: read the path from the `report` output.
+- **Breaking:** the step fails before lockrot runs when `output` names a `composer.json` or
+  `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the
+  `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else
+  `lockrot-baseline.json`. The check follows symlinks and `..`, and compares a missing file in any
+  letter case. With `--explain` in `args`, such a path got the explanation copied over the file.
+  Action: set `output` to another path.
+- **Breaking:** the step that installs PHP with setup-php clears `GITHUB_TOKEN` and
+  `COMPOSER_TOKEN` in its own environment. With an empty `github-token` input, setup-php took a
+  token from the job's `env` and wrote it into Composer's global `auth.json` as `github-oauth`.
+  Later steps then read it, and lockrot sent it instead of the `github-token` input. Action: give a
+  later Composer step its own credential, for example with `COMPOSER_AUTH`.
 - The job summary comes from the same lockrot run as the report. With lockrot 0.13.0 or newer,
   the run writes the markdown summary beside it with `--output`. The action no longer runs
   lockrot a second time offline. The summary now shows that run's own notes, an offline note included when
@@ -18,10 +54,10 @@ All notable changes to this action are documented here. The format follows
   in `args`, the action writes no job summary: lockrot refuses `--output` there, and a second
   offline run showed a whole report whose advisories and gate line could differ from the step.
   The explanation is in the report file, and in the step log for `format: table`.
-- The action passes `lockrot` as the command name before the options. A value can follow its
-  option after a space in `args`, such as `--explain vendor/package`. From lockrot 0.13.0, a word
-  in `args` that is no option value exits 2, where it named another command, such as
-  `self-update`, or none.
+- **Breaking:** the action passes `lockrot` as the command name before the options. A value can
+  follow its option after a space in `args`, such as `--explain vendor/package`. From lockrot
+  0.13.0, a word in `args` that is no option value exits 2. It named another command, such as
+  `self-update`, or none. Action: remove the word, or put its option before it.
 - With lockrot 0.13.0 or newer, the report goes to the `output` path through
   `--output=<format>:<path>`, not through a shell redirection. Under `generate-baseline`, the report file holds the run's report. With `--explain` in `args`,
   or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1.
@@ -39,28 +75,23 @@ All notable changes to this action are documented here. The format follows
   action always passes `--format`, and that `--explain` exits 2 with `generate-baseline: true`.
   It also says that `--fail-on`, `--baseline` or `--target-php` in `args` exits 2 when the input
   of the same name is set.
-- A `--format` in `args` fails the step before lockrot runs, with an error that names the
-  `format` input. It replaced the format that the action prints, names and rewrites the report by.
-- A `-d` or `--working-dir` in `args`, in any spelling, fails the step before lockrot runs, with an
-  error that names the `working-directory` input. It moved the project away from the files that
-  the action checks and annotates, so an `output` in the other directory could overwrite its
-  baseline.
+- **Breaking:** a `--format` in `args` fails the step before lockrot runs, with an error that names
+  the `format` input. It replaced the format that the action prints, names and rewrites the report
+  by. Action: set the `format` input.
+- **Breaking:** a `-d` or `--working-dir` in `args`, in any spelling, fails the step before lockrot
+  runs, with an error that names the `working-directory` input. It moved the project away from the
+  files that the action checks and annotates, so an `output` in the other directory could
+  overwrite its baseline. Action: set the `working-directory` input.
 
 ### Fixed
 
-- The step fails before lockrot runs when `output` names a `composer.json` or `composer.lock`,
-  the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the `baseline`
-  input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else
-  `lockrot-baseline.json`. The
-  check follows symlinks and `..`, and compares a missing file in any letter case. With
-  `--explain` in `args`, such a path got the explanation copied over the file.
-- The `exit-code` output and the README say that a code other than 0, 1 and 2 is a setup failure,
-  such as 255 from a PHP fatal error or 137 from a killed process. The step fails on it, and its
+- The `exit-code` output and the README say that a code other than 0, 1 and 2 is a setup failure.
+  Examples are 255 from a PHP fatal error and 137 from a killed process. The step fails on it, and its
   warning says so.
 - The `cache` input and the README say that the cache holds lockrot's repository-activity answers
   from GitHub, GitLab and Bitbucket, not from GitHub alone.
-- With `--explain` in `args`, the log line for the skipped job summary names the report file as
-  the place of the explanation, and also the step log for a format that the step prints.
+- With `--explain` in `args`, the log line for the skipped job summary names the place of the
+  explanation. That is the report file, and also the step log for a format that the step prints.
 - With `format: github` and a `working-directory` other than the root, the annotation rewrite
   writes its copy to a temporary file with a unique name beside the report. It keeps the report's
   mode and renames the copy over the report. It wrote and removed `<output>.tmp`, so a directory
