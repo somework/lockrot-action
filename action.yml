@@ -203,6 +203,9 @@ runs:
       with:
         php-version: ${{ inputs.php-version || 'latest' }}
         coverage: none
+        # An empty tools input reads TOOLS from the environment, and without a token a tool that
+        # setup-php resolves through the GitHub API can fail on the anonymous rate limit.
+        tools: composer
         github-token: ''
 
     - id: restore

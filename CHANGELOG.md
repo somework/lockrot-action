@@ -56,8 +56,10 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 - **Breaking:** the step that installs PHP with setup-php clears `GITHUB_TOKEN` and
   `COMPOSER_TOKEN` in its own environment. The action gives setup-php no token, and setup-php then
   took a token from the job's `env` and wrote it into Composer's global `auth.json` as `github-oauth`.
-  Later steps then read it, and lockrot sent it instead of the `github-token` input. Action: give a
-  later Composer step its own credential, for example with `COMPOSER_AUTH`.
+  Later steps then read it, and lockrot sent it instead of the `github-token` input. The step also
+  passes `tools: composer`, so a `TOOLS` in the job's `env` no longer adds tools to it. Action: give
+  a later Composer step its own credential, for example with `COMPOSER_AUTH`. Install other tools
+  with a setup-php step of your own.
 - The job summary comes from the same lockrot run as the report. With lockrot 0.13.0 or newer,
   the run writes the markdown summary beside it with `--output`. The action no longer runs
   lockrot a second time offline. The summary now shows that run's own notes, an offline note included when
