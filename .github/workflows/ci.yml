@@ -282,14 +282,23 @@ jobs:
         shell: bash
         run: |
           set -eu
-          # The Composer home of setup-php: ~/.composer, and %APPDATA%\Composer on Windows.
-          for auth in "$HOME/.composer/auth.json" "${APPDATA:-}/Composer/auth.json"; do
-            [ -f "$auth" ] || continue
-            if grep -q github-oauth "$auth"; then
-              echo "::error::setup-php wrote a github-oauth entry into $auth"
+          # The Composer home of setup-php: ~/.composer, and %APPDATA%\Composer on Windows. setup-php
+          # always writes composer.json there, so a home without it is a wrong path, not a pass.
+          appdata=""
+          if [ -n "${APPDATA:-}" ]; then appdata=$(cygpath -u "$APPDATA"); fi
+          found=false
+          for home in "$HOME/.composer" "${appdata:+$appdata/Composer}"; do
+            [ -n "$home" ] && [ -f "$home/composer.json" ] || continue
+            found=true
+            if [ -f "$home/auth.json" ] && grep -q github-oauth "$home/auth.json"; then
+              echo "::error::setup-php wrote a github-oauth entry into $home/auth.json"
               exit 1
             fi
           done
+          if [ "$found" = false ]; then
+            echo "::error::no Composer home of setup-php holds composer.json"
+            exit 1
+          fi
 
   docker:
     name: Docker image
