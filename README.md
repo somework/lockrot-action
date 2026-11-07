@@ -282,9 +282,9 @@ runner 2.293 or newer for the conditional steps. To pick the version, or to forc
     dev: 'true'
 ```
 
-A development package is reported the same way, but lockrot halves its whole score. A score of 1
-becomes 0, so that package is listed only with `all: true`, and `--fail-on=high` reads a high
-advisory with a reachable fix in it as `medium`. Add a `vulnerable` value such as
+A development package is reported the same way, but lockrot halves its whole score. The halving
+hides no finding: the lowest score before it is 2, a `low` advisory, and 1 is still `low`. A grade
+can drop, so `--fail-on=high` reads a high advisory with a reachable fix in it as `medium`. Add a `vulnerable` value such as
 `vulnerable-high` to fail on the advisory's own severity.
 
 ## Security
