@@ -25,14 +25,16 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   from vcs or of an unknown origin. Action: follow the `unchecked` entry of the lockrot 0.14.0
   release notes, or drop `unchecked` from `fail-on`.
 - **Breaking:** the reports change. `format: json` and the page of `format: html` carry report-2.
-  SARIF and gitlab output hold one record per flag. A `format: github` annotation title reads
-  `lockrot: <verdict> — <flags>`. Action: in a step that reads the report, check
-  `."$schema" == "https://lockrot.dev/schema/report-2.json"` first. Key an annotation on its file
-  and line, not on its title.
+  SARIF and gitlab output hold one record per flag, and SARIF also one per advisory. A
+  `format: github` annotation title reads `lockrot: <verdict> — <flags>`. Action: in a step that
+  reads a json report, check `."$schema" == "https://lockrot.dev/schema/report-2.json"` first. In
+  SARIF, check `runs[0].properties.lockrot_schema == 2`. Key an annotation on its file and line,
+  not on its title.
 - **Breaking:** lockrot 0.14 sends `GITHUB_TOKEN`, and so the `github-token` input, to github.com
   only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, the run
   is anonymous on github.com. Action: set `LOCKROT_GITHUB_TOKEN` to a github.com token in the
-  step's or job's `env`.
+  step's or job's `env`. The action does not pass the input as `LOCKROT_GITHUB_TOKEN`, because it
+  cannot tell which host issued the token. The `github-token` texts and the README say so.
 - **Breaking:** without `output`, each action step writes its report in a directory of its own
   under `RUNNER_TEMP`, so a later step of the same job no longer replaces it. The old default path
   was `RUNNER_TEMP/lockrot/report.<ext>`. Action: read the path from the `report` output.
@@ -40,11 +42,20 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the
   `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else
   `lockrot-baseline.json`. The check follows symlinks and `..`, and compares a missing file in any
-  letter case. With `--explain` in `args`, such a path got the explanation copied over the file.
-  Action: set `output` to another path.
+  letter case. With `--explain` in `args`, such a path got the explanation copied over the file,
+  and `output: composer.lock` or the baseline path emptied that file before lockrot read it. The step
+  also fails when PHP cannot read `extra.lockrot.baseline` for this check. It warned and went on. Action: set
+  `output` to another path.
+- **Breaking:** once the `output` checks pass, the action removes a file at the `output` path, a
+  symlink itself and not its target. lockrot can exit before it writes, for example on exit 2 or
+  under `LOCKROT_DISABLE`. The path then holds no file, so an `if: always()` upload of it fails.
+  It published an earlier run's report as this run's. Such a file was also logged as written,
+  rewritten for annotations or published as the job summary. A step that fails before these checks
+  leaves the file. Action: keep no file of your own at the `output` path, and let a failed upload
+  stand, or guard it with `hashFiles()`.
 - **Breaking:** the step that installs PHP with setup-php clears `GITHUB_TOKEN` and
-  `COMPOSER_TOKEN` in its own environment. With an empty `github-token` input, setup-php took a
-  token from the job's `env` and wrote it into Composer's global `auth.json` as `github-oauth`.
+  `COMPOSER_TOKEN` in its own environment. The action gives setup-php no token, and setup-php then
+  took a token from the job's `env` and wrote it into Composer's global `auth.json` as `github-oauth`.
   Later steps then read it, and lockrot sent it instead of the `github-token` input. Action: give a
   later Composer step its own credential, for example with `COMPOSER_AUTH`.
 - The job summary comes from the same lockrot run as the report. With lockrot 0.13.0 or newer,
@@ -114,13 +125,6 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   a locked package with no versions.
 - An option value after a space in `args` no longer exits 1, which the `exit-code` output names
   as a finding that failed `fail-on`. A misspelt option followed by a value exits 2.
-- `output: composer.lock` or the baseline path no longer empties that file before lockrot reads
-  it. The step fails before lockrot runs, and the file stays as it was.
-- Before lockrot runs, the action removes a file at the `output` path, a symlink itself and not its
-  target. lockrot can exit before it writes, for example on exit 2 or under `LOCKROT_DISABLE`.
-  The path then holds no file, and an `if: always()` upload fails. It published an earlier run's
-  report as this run's. Such a file was also logged as written, rewritten for annotations or
-  published as the job summary. The `report` output says that the file can be missing.
 - With `format: markdown`, the job summary keeps the run's own offline note, as with the other
   formats.
 - The version check reads the last line of stdout only, so a PHP startup warning no longer fails
@@ -137,11 +141,6 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 - A lockrot run that exits 0 or 1 without writing the job summary, such as one with
   `LOCKROT_DISABLE=1`, no longer fails the step. The action skips the summary and sets the
   `exit-code` and `report` outputs. It failed with a bash error and set no output.
-- The `github-token` input and the README say that lockrot 0.14 sends the token, passed as
-  `GITHUB_TOKEN`, to github.com only from a github.com runner. On GitHub Enterprise Server,
-  GHE.com, Gitea or Forgejo, set `LOCKROT_GITHUB_TOKEN` to a github.com token in the step's or
-  job's `env`. The action does not pass the input as `LOCKROT_GITHUB_TOKEN`, because it cannot
-  tell which host issued the token.
 - The README Docker section passes `-e GITHUB_SERVER_URL` with `-e GITHUB_TOKEN`, as lockrot 0.14
   needs to keep another host's token from github.com.
 - The README and the inputs state lockrot 0.14 facts: repository activity is read on GitHub,
