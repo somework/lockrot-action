@@ -155,8 +155,9 @@ steps:
 ```
 
 `if: always()` keeps the upload running when `fail-on` already failed the step. Findings then stay in
-code scanning and are tracked across runs. After an exit 2, `lockrot.sarif` is missing and the upload
-fails, because the action removes an earlier file at the `output` path before lockrot runs.
+code scanning and are tracked across runs. When lockrot writes no report, for example on an exit 2
+before its analysis, `lockrot.sarif` is missing and the upload fails. The action removes an earlier
+file at the `output` path before lockrot runs.
 
 ### The whole run as one artifact
 
