@@ -63,7 +63,8 @@ inputs:
       baseline: the baseline input, a --baseline in args, and extra.lockrot.baseline in the
       manifest, else lockrot-baseline.json. Once that check passes, the action removes a file at
       the path before lockrot runs. When lockrot then writes no report, for example on exit 2,
-      the path holds no file. From lockrot 0.13.0 the action passes the path as --output. With
+      the path holds no file. A directory at the path fails the step with "could not remove the
+      earlier report at <path>". From lockrot 0.13.0 the action passes the path as --output. With
       --explain in args, or with an older lockrot, the action copies stdout to the path after a
       run that exits 0 or 1.
     required: false
@@ -203,8 +204,9 @@ runs:
       with:
         php-version: ${{ inputs.php-version || 'latest' }}
         coverage: none
-        # An empty tools input reads TOOLS from the environment, and without a token a tool that
-        # setup-php resolves through the GitHub API can fail on the anonymous rate limit.
+        # An empty tools input reads TOOLS from the environment. Without a token, a tool that setup-php
+        # resolves through the GitHub API can fail on the anonymous rate limit, and a composer:<version>
+        # there would choose the Composer that later steps get.
         tools: composer
         github-token: ''
 

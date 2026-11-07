@@ -44,21 +44,27 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   `lockrot-baseline.json`. The check follows symlinks and `..`, and compares a missing file in any
   letter case. With `--explain` in `args`, such a path got the explanation copied over the file,
   and `output: composer.lock` or the baseline path emptied that file before lockrot read it. The step
-  also fails when PHP cannot read `extra.lockrot.baseline` for this check. It warned and went on. Action: set
+  also fails when PHP cannot read `extra.lockrot.baseline` for this check, or when the check cannot
+  enter `working-directory`. It warned and went on. Action: set
   `output` to another path.
-- **Breaking:** once the `output` checks pass, the action removes a file at the `output` path, a
-  symlink itself and not its target. lockrot can exit before it writes, for example on exit 2 or
-  under `LOCKROT_DISABLE`. The path then holds no file, so an `if: always()` upload of it fails.
-  It published an earlier run's report as this run's. Such a file was also logged as written,
-  rewritten for annotations or published as the job summary. With `--explain` in `args`, an empty
-  stdout is not copied to the path. A step that fails before these checks leaves the file. Action: keep no file of your own at the `output` path, and let a failed upload
-  stand, or guard it with `hashFiles()`.
+- **Breaking:** once the `output` checks pass, the action removes a file at the `output` path
+  before lockrot runs, a symlink itself and not its target. A symlink at the path is then replaced
+  by a regular file. v1.1.0 redirected stdout into the path, so it wrote through a symlink into
+  its target. When lockrot 0.13.0 or newer writes no report, for example on exit 2 or under
+  `LOCKROT_DISABLE`, the path holds no file. v1.1.0 left an empty file there, so an
+  `if: always()` upload of the path now fails. With `--explain` in `args`, an empty stdout is not
+  copied to the path. A lockrot older than 0.13.0 that exits 0 or 1 with an empty stdout still
+  leaves an empty file. A step that fails before these checks leaves the earlier file. A directory
+  at the path fails the step with `could not remove the earlier report at <path>`. Action: keep no
+  file of your own at the `output` path. Let a failed upload stand, or guard it with `hashFiles()`.
 - **Breaking:** the step that installs PHP with setup-php clears `GITHUB_TOKEN` and
   `COMPOSER_TOKEN` in its own environment. The action gives setup-php no token, and setup-php then
   took a token from the job's `env` and wrote it into Composer's global `auth.json` as `github-oauth`.
   Later steps then read it, and lockrot sent it instead of the `github-token` input. The step also
-  passes `tools: composer`, so a `TOOLS` in the job's `env` no longer adds tools to it. Action: give
-  a later Composer step its own credential, for example with `COMPOSER_AUTH`. Install other tools
+  passes `tools: composer`, so a `TOOLS` in the job's `env` no longer adds tools to it. Such a
+  `TOOLS` also no longer picks the Composer version that later steps get, such as `composer:2.2`.
+  The step installs the default stable Composer. Action: give a later Composer step its own
+  credential, for example with `COMPOSER_AUTH`. Install other tools or another Composer version
   with a setup-php step of your own.
 - The job summary comes from the same lockrot run as the report. With lockrot 0.13.0 or newer,
   the run writes the markdown summary beside it with `--output`. The action no longer runs
@@ -77,10 +83,11 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   lockrot refuses `--output` with `--explain`.
 - The action keeps its own temporary files in a directory of each run under `RUNNER_TEMP`, so no
   `output` path can name one of them.
-- With lockrot 0.14.0 or newer and the job summary on, the action passes
+- **Breaking:** with lockrot 0.14.0 or newer and the job summary on, the action passes
   `--markdown-max-bytes=1000000` unless `args` sets it. lockrot then leaves rows out of a large
   summary, where the action wrote only a size note. The cap also applies to the report file of
-  `format: markdown`, and to any markdown `--output` file in `args`.
+  `format: markdown`, and to any markdown `--output` file in `args`. Action: to keep a whole
+  markdown file, set `--markdown-max-bytes` in `args`, or set `summary: false`.
 - The `fail-on` input describes the lockrot 0.14.0 values: a comma-separated list of a grade, a
   flag (`capped` included), a `vulnerable` value and `unchecked`, or `none`. It links the
   [CI page](https://lockrot.dev/ci/) for choosing them.
