@@ -301,6 +301,45 @@ exit-code=0"
   [ "$(output_value exit-code)" = "2" ]
 }
 
+@test "an old file at the output path is gone when lockrot exits 2 without writing" {
+  # Arrange: an earlier run's report, and a lockrot that exits 2 before it writes.
+  export INPUT_FORMAT=sarif INPUT_OUTPUT=build/lockrot.sarif
+  mkdir -p "$GITHUB_WORKSPACE/build" "$SCRATCH/bin"
+  printf '{"stale": true}\n' > "$GITHUB_WORKSPACE/build/lockrot.sarif"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 2\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+
+  # Act
+  run_run
+
+  # Assert: an if: always() upload of the path finds no file, not the earlier results.
+  [ "$status" -eq 0 ]
+  [ "$(output_value exit-code)" = "2" ]
+  [ "$(output_value report)" = "$GITHUB_WORKSPACE/build/lockrot.sarif" ]
+  [ ! -e "$GITHUB_WORKSPACE/build/lockrot.sarif" ]
+}
+
+@test "an old file at the output path is gone with --explain when lockrot exits 2" {
+  export INPUT_FORMAT=json INPUT_OUTPUT=build/lockrot.json INPUT_ARGS='--explain acme/pkg' PHP_STUB_EXIT=2
+  mkdir -p "$GITHUB_WORKSPACE/build"
+  printf '{"stale": true}\n' > "$GITHUB_WORKSPACE/build/lockrot.json"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(output_value exit-code)" = "2" ]
+  [ ! -e "$GITHUB_WORKSPACE/build/lockrot.json" ]
+}
+
+@test "an output path that the action cannot clear fails the step before lockrot runs" {
+  export INPUT_FORMAT=sarif INPUT_OUTPUT=build/lockrot.sarif
+  mkdir -p "$GITHUB_WORKSPACE/build/lockrot.sarif"
+  run_run
+  [ "$status" -ne 0 ]
+  grep -qF -- 'could not remove the earlier report' <<< "$output"
+  [ -z "$(output_value exit-code)" ]
+  ! grep -qs -- ' lockrot ' "$PHP_STUB_LOG"
+}
+
 @test "a default report path names no file when lockrot wrote none" {
   export INPUT_FORMAT=sarif
   mkdir -p "$SCRATCH/bin"
@@ -540,7 +579,7 @@ exit-code=0"
   [ "$status" -eq 0 ]
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
   grep -qF -- "lockrot wrote no markdown report to $GITHUB_WORKSPACE/build/lockrot.md" <<< "$output"
-  [ "$(cat "$GITHUB_WORKSPACE/build/lockrot.md")" = '### OLD REPORT' ]
+  [ ! -e "$GITHUB_WORKSPACE/build/lockrot.md" ]
 }
 
 @test "an old sarif file at the output path is not logged as written when lockrot exits 2" {
@@ -556,7 +595,7 @@ exit-code=0"
   grep -qF -- 'lockrot wrote no sarif report' <<< "$output"
 }
 
-@test "the annotation rewrite leaves alone an output file that lockrot did not write" {
+@test "a symlink at the output path is removed and its target left alone when lockrot does not write" {
   export INPUT_OUTPUT=build/annotations.txt
   mkdir -p "$GITHUB_WORKSPACE/build" "$SCRATCH/bin"
   printf '::warning file=composer.lock,line=1::old\n' > "$SCRATCH/real.txt"
@@ -566,7 +605,7 @@ exit-code=0"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
   [ "$status" -eq 0 ]
-  [ -L "$GITHUB_WORKSPACE/build/annotations.txt" ]
+  [ ! -L "$GITHUB_WORKSPACE/build/annotations.txt" ]
   [ "$(cat "$SCRATCH/real.txt")" = '::warning file=composer.lock,line=1::old' ]
 }
 

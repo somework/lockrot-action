@@ -63,7 +63,7 @@ other CI systems and local runs.
 | `fail-on` | *(lockrot's own default: `none`)* | Comma-separated values that fail the step, at most one of each kind. A grade: `critical`, `high`, `medium` or `low`, which fails on that grade or a higher one. A flag: `abandoned`, `silent`, `pinned`, `left-behind`, `old-promise`, `stale` or `capped`. A flag fails on itself and on each flag before it in this order. A `vulnerable` value: `vulnerable` (any severity), `vulnerable-medium`, `vulnerable-high` or `vulnerable-critical`, which fails on that severity or a higher one. `unchecked` fails on a finding whose check did not run. `none` stands alone. Example: `left-behind,vulnerable-high`. Empty defers to `LOCKROT_FAIL_ON`, then to `extra.lockrot.fail-on` in the manifest. See [choosing the values](https://lockrot.dev/ci/) |
 | `target-php` | *(`LOCKROT_TARGET_PHP`, then `extra.lockrot.target-php`, then `config.platform.php`, then the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html`. An empty value runs `github`. The action always passes `--format`, so `extra.lockrot.format` does not apply. A `--format` in `args` fails the step before lockrot runs |
-| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. The step fails before lockrot runs when the path names a `composer.json` or `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else `lockrot-baseline.json`. From lockrot 0.13.0 the action passes the path as `--output`. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1 |
+| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. Before lockrot runs, the action removes a file at the `output` path, so the path holds no file when lockrot writes no report, for example on exit 2. The step fails before lockrot runs when the path names a `composer.json` or `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else `lockrot-baseline.json`. From lockrot 0.13.0 the action passes the path as `--output`. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1 |
 | `working-directory` | `.` | Directory where lockrot runs, relative to the workspace. It holds `composer.json` and `composer.lock`, unless `COMPOSER` names another manifest. `COMPOSER` is read relative to this directory |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
 | `all` | `false` | Report every checked package, not only flagged ones (`--all`) |
@@ -95,7 +95,7 @@ report, so it always passes `--format`, and an empty `format` runs `github`.
 | Output | Meaning |
 |---|---|
 | `exit-code` | lockrot's exit code, also when the step fails. Empty when the action fails before it sets the output. Examples are a failed download or sha256 check, an unknown `format`, a line break in an input and a missing lock. The refusals before lockrot runs are examples too: an `output` that names a protected file, and a `--format`, `-d` or `--working-dir` in `args`. A code other than 0, 1 and 2 is a setup failure, such as 255 from a PHP fatal error or 137 from a killed process, and the step fails on it |
-| `report` | Path of the report file in the requested format. Without `output`, each step gets a path of its own |
+| `report` | Path of the report file in the requested format. Without `output`, each step gets a path of its own. The file is missing when lockrot wrote no report in this step, for example on exit 2 |
 | `version` | The lockrot version that ran |
 | `cache-hit` | `true` when the metadata cache was restored from the exact key |
 
@@ -155,7 +155,8 @@ steps:
 ```
 
 `if: always()` keeps the upload running when `fail-on` already failed the step. Findings then stay in
-code scanning and are tracked across runs.
+code scanning and are tracked across runs. After an exit 2, `lockrot.sarif` is missing and the upload
+fails, because the action removes an earlier file at the `output` path before lockrot runs.
 
 ### The whole run as one artifact
 

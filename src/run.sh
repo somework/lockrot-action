@@ -93,6 +93,11 @@ main() {
       *) report="$(native_path "${GITHUB_WORKSPACE:-$PWD}")/${report}" ;;
     esac
     refuse_project_file "$report" "$work_dir" ${extra[@]+"${extra[@]}"}
+    # lockrot can exit before it writes, and an if: always() upload of the path must then find no
+    # file rather than an earlier run's report.
+    if [ -e "$report" ] || [ -L "$report" ]; then
+      rm -f -- "$report" || fail "could not remove the earlier report at ${report}"
+    fi
   else
     # A directory of this step's own: a later step of the job must not replace this report. Mode
     # 755 as for RUNNER_TEMP/lockrot, so a later step that runs as another user can read it.
@@ -105,15 +110,11 @@ main() {
   # From lockrot 0.13.0 the report goes through --output. lockrot's own check of the target is the
   # second line of defence, after refuse_project_file. --explain refuses --output, and an older
   # lockrot has none, so both get stdout copied there after a run that exits 0 or 1.
-  local stdout_file report_by_output=false report_id=""
+  local stdout_file report_by_output=false
   stdout_file="${SCRATCH_DIR}/stdout.$(report_extension "$format")"
   if [ "$explain" = false ] && version_at_least "$version" 0.13.0; then
     report_by_output=true
     args+=("--output=${format}:${report}")
-    # lockrot replaces the file by a rename, so a written report has a new file id.
-    if [ -e "$report" ] || [ -L "$report" ]; then
-      report_id=$(file_id "$report")
-    fi
   fi
 
   # The job summary shows the markdown format. A markdown run's own report is that. From lockrot
@@ -167,7 +168,7 @@ main() {
   # lockrot can exit before it writes anything: LOCKROT_DISABLE, --help, a usage error.
   local report_written=false
   if [ "$report_by_output" = true ]; then
-    if [ -f "$report" ] && [ "$(file_id "$report")" != "$report_id" ]; then
+    if [ -f "$report" ]; then
       report_written=true
       [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir" || rewrite_failed "$report" "$code"
     fi
@@ -364,12 +365,6 @@ has_working_dir() {
     case "$argument" in -d*|--working-dir|--working-dir=*) return 0 ;; esac
   done
   return 1
-}
-
-# The file id of $1 itself, not of a symlink's target.
-file_id() {
-  # shellcheck disable=SC2012 # only the inode column is read, never a file name
-  ls -di "$1" | awk '{ print $1 }'
 }
 
 # Whether the arguments after $1 give option $1, with its value joined by `=` or after a space.

@@ -58,7 +58,9 @@ inputs:
     description: >-
       Where to write the report, relative to the workspace or absolute. Empty keeps it in a
       directory of the step's own under RUNNER_TEMP, so a later step of the job does not replace
-      it. Either way the path is the report output. The step fails before lockrot runs when the
+      it. Either way the path is the report output. Before lockrot runs, the action removes a file
+      at the path, so the path holds no file when lockrot writes no report, for example on exit
+      2. The step fails before lockrot runs when the
       path names a composer.json or composer.lock, the manifest or lock that COMPOSER names, or a
       baseline: the baseline input, a --baseline in args, and extra.lockrot.baseline in the
       manifest, else lockrot-baseline.json. From lockrot 0.13.0 the action passes the path as --output. With
@@ -164,7 +166,8 @@ outputs:
   report:
     description: >-
       Path of the report file in the requested format. Without the output input, each step gets
-      a path of its own.
+      a path of its own. The file is missing when lockrot wrote no report in this step, for
+      example on exit 2.
     value: ${{ steps.run.outputs.report }}
   version:
     description: The lockrot version that ran.
