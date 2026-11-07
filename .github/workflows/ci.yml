@@ -265,6 +265,32 @@ jobs:
         run: |
           [ "$OUTCOME" = "failure" ]
 
+      # setup-php falls back to GITHUB_TOKEN and COMPOSER_TOKEN from the environment when its
+      # github-token input is empty, as in a job that sets them for its other steps.
+      - name: A token in the environment while setup-php installs PHP
+        uses: ./
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COMPOSER_TOKEN: ${{ github.token }}
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          php-version: '8.4'
+          fail-on: none
+          cache: 'false'
+      - name: Check that Composer's global auth.json holds no token
+        shell: bash
+        run: |
+          set -eu
+          # The Composer home of setup-php: ~/.composer, and %APPDATA%\Composer on Windows.
+          for auth in "$HOME/.composer/auth.json" "${APPDATA:-}/Composer/auth.json"; do
+            [ -f "$auth" ] || continue
+            if grep -q github-oauth "$auth"; then
+              echo "::error::setup-php wrote a github-oauth entry into $auth"
+              exit 1
+            fi
+          done
+
   docker:
     name: Docker image
     runs-on: ubuntu-latest
