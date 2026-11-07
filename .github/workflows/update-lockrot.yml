@@ -120,4 +120,4 @@ jobs:
 
             Release notes: https://github.com/somework/lockrot/releases/tag/v${{ needs.check.outputs.version }}
 
-            After merging, publish a release of this action so `v1` and the Docker image pick it up.
+            Before the release, `CHANGELOG.md` needs a section for this lockrot release. When it changes an exit code, an option or the report, the action release is a minor one, and the section marks each such change **Breaking:** (see the README Versioning section). After merging, publish a release of this action so `v1` and the Docker image pick it up.
