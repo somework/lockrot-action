@@ -226,7 +226,11 @@ refuse_project_file() {
   case "$manifest" in /*|[A-Za-z]:/*) ;; *) manifest="${project}/${manifest}" ;; esac
   case "$lock" in /*|[A-Za-z]:/*) ;; *) lock="${project}/${lock}" ;; esac
   base=$(dirname "$manifest")
-  local -a baselines=("$(trim "${INPUT_BASELINE:-}")" "$(configured_baseline "$manifest")")
+  local configured
+  # The output file is removed once this check passes, so a baseline it cannot name must stop the step.
+  configured=$(configured_baseline "$manifest") \
+    || fail "could not read extra.lockrot.baseline from ${manifest} (php exited with ${configured}), so the output check cannot tell whether output names the baseline"
+  local -a baselines=("$(trim "${INPUT_BASELINE:-}")" "$configured")
   while IFS= read -r file; do
     baselines+=("$file")
   done < <(option_values --baseline "$@")
@@ -262,16 +266,16 @@ refuse_project_file() {
 }
 
 # extra.lockrot.baseline from manifest $1, else lockrot-baseline.json. The value carries a marker,
-# so a PHP startup line on stdout is never read as the value.
+# so a PHP startup line on stdout is never read as the value. When PHP fails, prints its exit code
+# and returns 1.
 configured_baseline() {
   local value="" code=0
   if [ -f "$1" ]; then
     # shellcheck disable=SC2016 # PHP code, expanded by PHP
     value=$(php -d display_startup_errors=0 -d display_errors=stderr -r '$j = json_decode((string) file_get_contents($argv[1]), true); $b = $j["extra"]["lockrot"]["baseline"] ?? null; if (is_string($b)) { echo "lockrot-baseline=", $b, "\n"; }' -- "$1" 2> /dev/null) || code=$?
     if [ "$code" -ne 0 ]; then
-      # stderr, as for fail: stdout is the value.
-      warn "could not read extra.lockrot.baseline from $1 (php exited with ${code}); the output check protects lockrot-baseline.json there" >&2
-      value=""
+      printf '%s\n' "$code"
+      return 1
     fi
     value=$(printf '%s\n' "$value" | sed -n 's/^lockrot-baseline=//p' | head -n 1)
   fi

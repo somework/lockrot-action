@@ -83,7 +83,7 @@ report_value() { output_value report | random_dirs; }
 @test "a run that exits 0 without writing the summary file skips the summary and still sets the outputs" {
   # Like LOCKROT_DISABLE=1: lockrot answers --version, then exits 0 before it writes anything.
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -96,7 +96,7 @@ report_value() { output_value report | random_dirs; }
 @test "a summary file left by an earlier step is not published when this run writes none" {
   printf '### lockrot: stale summary\n' > "$RUNNER_TEMP/lockrot/summary.md"
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -255,7 +255,7 @@ exit-code=0"
   # That lockrot writes the report to stdout only, and only --output files can be capped.
   export INPUT_FORMAT=markdown LOCKROT_VERSION=0.12.0
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 0.12.0"; exit 0;; esac; done\nhead -c 1000001 /dev/zero | tr "\\0" x\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 0.12.0"; exit 0;; esac; done\nhead -c 1000001 /dev/zero | tr "\\0" x\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -291,7 +291,7 @@ exit-code=0"
 @test "a report file that lockrot did not write is named in the log, not read" {
   export INPUT_FORMAT=sarif
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 2\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 2\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -306,7 +306,7 @@ exit-code=0"
   export INPUT_FORMAT=sarif INPUT_OUTPUT=build/lockrot.sarif
   mkdir -p "$GITHUB_WORKSPACE/build" "$SCRATCH/bin"
   printf '{"stale": true}\n' > "$GITHUB_WORKSPACE/build/lockrot.sarif"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 2\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 2\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
 
@@ -343,7 +343,7 @@ exit-code=0"
 @test "a default report path names no file when lockrot wrote none" {
   export INPUT_FORMAT=sarif
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -358,7 +358,7 @@ exit-code=0"
   mkdir -p "$GITHUB_WORKSPACE/other" "$SCRATCH/bin"
   printf '{}\n' > "$GITHUB_WORKSPACE/other/composer.json"
   printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/other/composer.lock"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=*:*) printf "report of %%s\\n" "${PWD##*/}" > "${a#--output=*:}";; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=*:*) printf "report of %%s\\n" "${PWD##*/}" > "${a#--output=*:}";; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
 
@@ -403,7 +403,7 @@ exit-code=0"
   # Like lockrot, the stub replaces the report by a rename and carries the earlier mode, 0444 here.
   export INPUT_OUTPUT=reports/lockrot.txt
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=github:*) t=${a#--output=github:}; printf "::warning file=composer.lock,line=3::m\\n" > "$t.new"; chmod 444 "$t.new"; mv -f "$t.new" "$t";; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=github:*) t=${a#--output=github:}; printf "::warning file=composer.lock,line=3::m\\n" > "$t.new"; chmod 444 "$t.new"; mv -f "$t.new" "$t";; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -417,7 +417,7 @@ exit-code=0"
   # The stub writes the report, then leaves its directory read-only, so no copy can go beside it.
   export INPUT_OUTPUT=reports/lockrot.txt PHP_STUB_EXIT=1
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=github:*) t=${a#--output=github:}; printf "::warning file=composer.lock,line=3::m\\n" > "$t"; chmod 555 "${t%%/*}";; esac; done\nexit 1\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=github:*) t=${a#--output=github:}; printf "::warning file=composer.lock,line=3::m\\n" > "$t"; chmod 555 "${t%%/*}";; esac; done\nexit 1\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -445,7 +445,7 @@ exit-code=0"
   # apps/api/composer.lock itself, so the action adds no prefix.
   export INPUT_WORKING_DIRECTORY=. COMPOSER=apps/api/composer.json
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=github:*) printf "::warning file=apps/api/composer.lock,line=3::m\\n" > "${a#--output=github:}";; esac; done\nprintf "::warning file=apps/api/composer.lock,line=3::m\\n"\nexit 0\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=github:*) printf "::warning file=apps/api/composer.lock,line=3::m\\n" > "${a#--output=github:}";; esac; done\nprintf "::warning file=apps/api/composer.lock,line=3::m\\n"\nexit 0\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -516,7 +516,7 @@ exit-code=0"
 @test "a markdown run that writes no report file skips the summary" {
   export INPUT_FORMAT=markdown
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -572,7 +572,7 @@ exit-code=0"
   export INPUT_FORMAT=markdown INPUT_OUTPUT=build/lockrot.md
   mkdir -p "$GITHUB_WORKSPACE/build" "$SCRATCH/bin"
   printf '### OLD REPORT\n' > "$GITHUB_WORKSPACE/build/lockrot.md"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -586,7 +586,7 @@ exit-code=0"
   export INPUT_FORMAT=sarif INPUT_OUTPUT=build/l.sarif
   mkdir -p "$GITHUB_WORKSPACE/build" "$SCRATCH/bin"
   printf 'old sarif\n' > "$GITHUB_WORKSPACE/build/l.sarif"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 2\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 2\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -600,7 +600,7 @@ exit-code=0"
   mkdir -p "$GITHUB_WORKSPACE/build" "$SCRATCH/bin"
   printf '::warning file=composer.lock,line=1::old\n' > "$SCRATCH/real.txt"
   ln -s "$SCRATCH/real.txt" "$GITHUB_WORKSPACE/build/annotations.txt"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 2\n' > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; esac; done\nexit 2\n' > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -620,7 +620,7 @@ exit-code=0"
 
 @test "a PHP startup warning on stdout before the version line does not fail the version check" {
   mkdir -p "$SCRATCH/bin"
-  printf '#!/usr/bin/env bash\nfor a in "$@"; do case $a in --version) printf "Warning: PHP Startup: Unable to load dynamic library\\n"; break;; esac; done\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) printf "Warning: PHP Startup: Unable to load dynamic library\\n"; break;; esac; done\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
   export PATH="$SCRATCH/bin:$PATH"
   run_run
@@ -764,13 +764,23 @@ assert_output_refused() {
   assert_output_refused project/LOCKROT-BASELINE.json "$GITHUB_WORKSPACE/project/LOCKROT-BASELINE.json"
 }
 
-@test "a composer.json that PHP cannot read for the baseline is a warning, and the default baseline stays protected" {
+@test "a composer.json that PHP cannot read for the baseline fails the step and leaves the output file alone" {
+  # Arrange: the output names the baseline that extra.lockrot.baseline sets, and PHP cannot read it.
+  printf '{"extra": {"lockrot": {"baseline": "custom.json"}}}\n' > "$GITHUB_WORKSPACE/project/composer.json"
+  printf '{"kept": true}\n' > "$GITHUB_WORKSPACE/project/custom.json"
   mkdir -p "$SCRATCH/bin"
   printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 255;; esac\nexec "%s/tests/unit/stubs/php" "$@"\n' "$ACTION_ROOT" > "$SCRATCH/bin/php"
   chmod +x "$SCRATCH/bin/php"
-  export PATH="$SCRATCH/bin:$PATH"
-  assert_output_refused project/lockrot-baseline.json "$GITHUB_WORKSPACE/project/lockrot-baseline.json"
-  [[ "$output" == *"::warning::lockrot-action: could not read extra.lockrot.baseline from "*"/workspace/project/composer.json (php exited with 255)"* ]] || false
+  export PATH="$SCRATCH/bin:$PATH" INPUT_OUTPUT=project/custom.json
+
+  # Act
+  run_run
+
+  # Assert
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not read extra.lockrot.baseline from "*"/workspace/project/composer.json (php exited with 255)"* ]] || false
+  [ "$(cat "$GITHUB_WORKSPACE/project/custom.json")" = '{"kept": true}' ]
+  [ -z "$(output_value exit-code)" ]
 }
 
 @test "a PHP startup line on stdout is not read as the configured baseline" {
