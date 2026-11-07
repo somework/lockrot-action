@@ -93,6 +93,11 @@ main() {
       *) report="$(native_path "${GITHUB_WORKSPACE:-$PWD}")/${report}" ;;
     esac
     refuse_project_file "$report" "$work_dir" ${extra[@]+"${extra[@]}"}
+    # lockrot can exit before it writes, and an if: always() upload of the path must then find no
+    # file rather than an earlier run's report.
+    if [ -e "$report" ] || [ -L "$report" ]; then
+      rm -f -- "$report" || fail "could not remove the earlier report at ${report}"
+    fi
   else
     # A directory of this step's own: a later step of the job must not replace this report. Mode
     # 755 as for RUNNER_TEMP/lockrot, so a later step that runs as another user can read it.
@@ -105,15 +110,11 @@ main() {
   # From lockrot 0.13.0 the report goes through --output. lockrot's own check of the target is the
   # second line of defence, after refuse_project_file. --explain refuses --output, and an older
   # lockrot has none, so both get stdout copied there after a run that exits 0 or 1.
-  local stdout_file report_by_output=false report_id=""
+  local stdout_file report_by_output=false
   stdout_file="${SCRATCH_DIR}/stdout.$(report_extension "$format")"
   if [ "$explain" = false ] && version_at_least "$version" 0.13.0; then
     report_by_output=true
     args+=("--output=${format}:${report}")
-    # lockrot replaces the file by a rename, so a written report has a new file id.
-    if [ -e "$report" ] || [ -L "$report" ]; then
-      report_id=$(file_id "$report")
-    fi
   fi
 
   # The job summary shows the markdown format. A markdown run's own report is that. From lockrot
@@ -167,11 +168,12 @@ main() {
   # lockrot can exit before it writes anything: LOCKROT_DISABLE, --help, a usage error.
   local report_written=false
   if [ "$report_by_output" = true ]; then
-    if [ -f "$report" ] && [ "$(file_id "$report")" != "$report_id" ]; then
+    if [ -f "$report" ]; then
       report_written=true
       [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir" || rewrite_failed "$report" "$code"
     fi
-  elif [ "$code" -le 1 ]; then
+  # An explanation is never empty, so empty stdout means lockrot exited before it, as under LOCKROT_DISABLE.
+  elif [ "$code" -le 1 ] && { [ "$explain" = false ] || [ -s "$stdout_file" ]; }; then
     cp "$stdout_file" "$report"
     report_written=true
   fi
@@ -217,7 +219,8 @@ rewrite_failed() {
 # the working directory, and every baseline is relative to the manifest's directory.
 refuse_project_file() {
   local report=$1 project manifest lock base candidate name file key i
-  project=$(cd -P "$2" 2> /dev/null && pwd -P) || return 0
+  project=$(cd -P "$2" 2> /dev/null && pwd -P) \
+    || fail "could not enter the working directory $2, so the output check cannot tell whether output names a project file"
   shift 2
   manifest=$(native_path "$(trim "${COMPOSER:-}")")
   [ -n "$manifest" ] || manifest=composer.json
@@ -225,7 +228,11 @@ refuse_project_file() {
   case "$manifest" in /*|[A-Za-z]:/*) ;; *) manifest="${project}/${manifest}" ;; esac
   case "$lock" in /*|[A-Za-z]:/*) ;; *) lock="${project}/${lock}" ;; esac
   base=$(dirname "$manifest")
-  local -a baselines=("$(trim "${INPUT_BASELINE:-}")" "$(configured_baseline "$manifest")")
+  local configured
+  # The output file is removed once this check passes, so a baseline it cannot name must stop the step.
+  configured=$(configured_baseline "$manifest") \
+    || fail "could not read extra.lockrot.baseline from ${manifest} (php exited with ${configured}), so the output check cannot tell whether output names the baseline"
+  local -a baselines=("$(trim "${INPUT_BASELINE:-}")" "$configured")
   while IFS= read -r file; do
     baselines+=("$file")
   done < <(option_values --baseline "$@")
@@ -261,16 +268,16 @@ refuse_project_file() {
 }
 
 # extra.lockrot.baseline from manifest $1, else lockrot-baseline.json. The value carries a marker,
-# so a PHP startup line on stdout is never read as the value.
+# so a PHP startup line on stdout is never read as the value. When PHP fails, prints its exit code
+# and returns 1.
 configured_baseline() {
   local value="" code=0
   if [ -f "$1" ]; then
     # shellcheck disable=SC2016 # PHP code, expanded by PHP
     value=$(php -d display_startup_errors=0 -d display_errors=stderr -r '$j = json_decode((string) file_get_contents($argv[1]), true); $b = $j["extra"]["lockrot"]["baseline"] ?? null; if (is_string($b)) { echo "lockrot-baseline=", $b, "\n"; }' -- "$1" 2> /dev/null) || code=$?
     if [ "$code" -ne 0 ]; then
-      # stderr, as for fail: stdout is the value.
-      warn "could not read extra.lockrot.baseline from $1 (php exited with ${code}); the output check protects lockrot-baseline.json there" >&2
-      value=""
+      printf '%s\n' "$code"
+      return 1
     fi
     value=$(printf '%s\n' "$value" | sed -n 's/^lockrot-baseline=//p' | head -n 1)
   fi
@@ -364,12 +371,6 @@ has_working_dir() {
     case "$argument" in -d*|--working-dir|--working-dir=*) return 0 ;; esac
   done
   return 1
-}
-
-# The file id of $1 itself, not of a symlink's target.
-file_id() {
-  # shellcheck disable=SC2012 # only the inode column is read, never a file name
-  ls -di "$1" | awk '{ print $1 }'
 }
 
 # Whether the arguments after $1 give option $1, with its value joined by `=` or after a space.

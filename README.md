@@ -63,7 +63,7 @@ other CI systems and local runs.
 | `fail-on` | *(lockrot's own default: `none`)* | Comma-separated values that fail the step, at most one of each kind. A grade: `critical`, `high`, `medium` or `low`, which fails on that grade or a higher one. A flag: `abandoned`, `silent`, `pinned`, `left-behind`, `old-promise`, `stale` or `capped`. A flag fails on itself and on each flag before it in this order. A `vulnerable` value: `vulnerable` (any severity), `vulnerable-medium`, `vulnerable-high` or `vulnerable-critical`, which fails on that severity or a higher one. `unchecked` fails on a finding whose check did not run. `none` stands alone. Example: `left-behind,vulnerable-high`. Empty defers to `LOCKROT_FAIL_ON`, then to `extra.lockrot.fail-on` in the manifest. See [choosing the values](https://lockrot.dev/ci/) |
 | `target-php` | *(`LOCKROT_TARGET_PHP`, then `extra.lockrot.target-php`, then `config.platform.php`, then the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html`. An empty value runs `github`. The action always passes `--format`, so `extra.lockrot.format` does not apply. A `--format` in `args` fails the step before lockrot runs |
-| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. The step fails before lockrot runs when the path names a `composer.json` or `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else `lockrot-baseline.json`. From lockrot 0.13.0 the action passes the path as `--output`. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1 |
+| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. The step fails before lockrot runs when the path names a `composer.json` or `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else `lockrot-baseline.json`. Once that check passes, the action removes a file at the path before lockrot runs. When lockrot then writes no report, for example on exit 2, the path holds no file. A directory at the path fails the step with `could not remove the earlier report at <path>`. From lockrot 0.13.0 the action passes the path as `--output`. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1 |
 | `working-directory` | `.` | Directory where lockrot runs, relative to the workspace. It holds `composer.json` and `composer.lock`, unless `COMPOSER` names another manifest. `COMPOSER` is read relative to this directory |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
 | `all` | `false` | Report every checked package, not only flagged ones (`--all`) |
@@ -95,7 +95,7 @@ report, so it always passes `--format`, and an empty `format` runs `github`.
 | Output | Meaning |
 |---|---|
 | `exit-code` | lockrot's exit code, also when the step fails. Empty when the action fails before it sets the output. Examples are a failed download or sha256 check, an unknown `format`, a line break in an input and a missing lock. The refusals before lockrot runs are examples too: an `output` that names a protected file, and a `--format`, `-d` or `--working-dir` in `args`. A code other than 0, 1 and 2 is a setup failure, such as 255 from a PHP fatal error or 137 from a killed process, and the step fails on it |
-| `report` | Path of the report file in the requested format. Without `output`, each step gets a path of its own |
+| `report` | Path of the report file in the requested format. Without `output`, each step gets a path of its own. The file is missing when lockrot ran and wrote no report in this step, for example on exit 2 |
 | `version` | The lockrot version that ran |
 | `cache-hit` | `true` when the metadata cache was restored from the exact key |
 
@@ -155,7 +155,9 @@ steps:
 ```
 
 `if: always()` keeps the upload running when `fail-on` already failed the step. Findings then stay in
-code scanning and are tracked across runs.
+code scanning and are tracked across runs. When lockrot writes no report, for example on an exit 2
+before its analysis, `lockrot.sarif` is missing and the upload fails. The action removes an earlier
+file at the `output` path before lockrot runs.
 
 ### The whole run as one artifact
 
@@ -281,9 +283,9 @@ runner 2.293 or newer for the conditional steps. To pick the version, or to forc
     dev: 'true'
 ```
 
-A development package is reported the same way, but lockrot halves its whole score. A score of 1
-becomes 0, so that package is listed only with `all: true`, and `--fail-on=high` reads a high
-advisory with a reachable fix in it as `medium`. Add a `vulnerable` value such as
+A development package is reported the same way, but lockrot halves its whole score. The halving
+hides no finding: the lowest score before it is 2, a `low` advisory, and 1 is still `low`. A grade
+can drop, so `--fail-on=high` reads a high advisory with a reachable fix in it as `medium`. Add a `vulnerable` value such as
 `vulnerable-high` to fail on the advisory's own severity.
 
 ## Security
@@ -304,8 +306,10 @@ advisory with a reachable fix in it as `medium`. Add a `vulnerable` value such a
 - **Pinned dependencies.** The two actions this one uses — `actions/cache` and
   `shivammathur/setup-php` — are pinned by commit SHA, as is everything in this repository's own
   workflows. Dependabot proposes updates after a seven-day cooldown. setup-php is called without a
-  token, so it never writes the workflow token into Composer's global `auth.json` for later steps
-  to pick up.
+  token, and its step clears `GITHUB_TOKEN` and `COMPOSER_TOKEN`. So setup-php writes no token
+  from the job's `env` into Composer's global `auth.json` for later steps to pick up. It still
+  writes a `COMPOSER_AUTH_JSON` or `PACKAGIST_TOKEN` from that `env`, which are Composer
+  credentials that the job sets.
 - **Network.** `github.com` release assets, the Composer repositories configured in the project
   (`repo.packagist.org` by default), the repository hosts the locked packages come from
   (`api.github.com`, GitLab and `api.bitbucket.org`), and GitHub's own cache service through

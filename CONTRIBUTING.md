@@ -41,11 +41,15 @@ docker run --rm -v "$PWD/tests/fixtures/project:/app:ro" lockrot --target-php=8.
 - The scripts stay bash 3.2 compatible (macOS) and must work under Git Bash on Windows.
 - Inputs never appear inside a `run:` block as `${{ }}`; they are passed through `env:`.
 - Every `uses:` is pinned to a full commit SHA with the version in a trailing comment.
-- A new lockrot release changes `lockrot.env` and nothing else; the update workflow does that.
+- The update workflow pins a new lockrot release in `lockrot.env`. The action release that ships
+  it also needs a `CHANGELOG.md` section for that lockrot release. When the lockrot release changes
+  an exit code, an option or the report, the action release is a minor one. Its section then marks
+  each such change **Breaking:** with the action a workflow needs, as the README
+  [Versioning](README.md#versioning) section says.
 - Changes to what the action does are listed in `CHANGELOG.md` under *Unreleased*.
 
 ## Releasing
 
-1. Merge to `main` with `CHANGELOG.md` updated.
+1. Merge to `main` with `CHANGELOG.md` updated, the **Breaking:** entries of a lockrot bump included.
 2. `gh release create v1.x.y --generate-notes` — the release workflow moves `v1`, and the image
    workflow publishes `ghcr.io/somework/lockrot` for the lockrot version pinned in `lockrot.env`.
