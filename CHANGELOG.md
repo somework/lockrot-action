@@ -86,8 +86,8 @@ All notable changes to this action are documented here. The format follows
 - `output: composer.lock` or the baseline path no longer empties that file before lockrot reads
   it. The step fails before lockrot runs, and the file stays as it was.
 - Before lockrot runs, the action removes a file at the `output` path, a symlink itself and not its
-  target. When lockrot exits before it writes, for example on exit 2 or under `LOCKROT_DISABLE`,
-  the path holds no file, so an `if: always()` upload fails instead of publishing an earlier run's
+  target. lockrot can exit before it writes, for example on exit 2 or under `LOCKROT_DISABLE`.
+  The path then holds no file, and an `if: always()` upload fails. It published an earlier run's
   report as this run's. Such a file was also logged as written, rewritten for annotations or
   published as the job summary. The `report` output says that the file can be missing.
 - With `format: markdown`, the job summary keeps the run's own offline note, as with the other
