@@ -107,16 +107,19 @@ main() {
     report="${step_dir}/report.$(report_extension "$format")"
   fi
   mkdir -p "$(dirname "$report")"
-  # From lockrot 0.13.0 a format the log prints goes through --output. lockrot's own check of the
-  # target is the second line of defence, after refuse_project_file. A document format is not
-  # printed, so its stdout is the report, and lockrot renders it once. --explain refuses --output,
-  # and an older lockrot has none, so these get stdout moved there after a run that exits 0 or 1.
-  # generate-baseline writes nothing to stdout, so it always takes --output.
-  local stdout_file report_by_output=false
+  # From lockrot 0.13.0 a format the log prints goes through --output, and so does a run whose stdout
+  # holds no report. lockrot's own check of the target is then the second line of defence, after
+  # refuse_project_file. Otherwise a document format is not printed, so its stdout is the report,
+  # and lockrot renders it once. --explain refuses --output, and an older lockrot has none, so
+  # these get stdout moved there after a run that exits 0 or 1.
+  local stdout_file report_by_output=false stdout_report=true
   stdout_file="${SCRATCH_DIR}/stdout.$(report_extension "$format")"
+  if [ "$generate_baseline" = true ] || ! prints_report ${extra[@]+"${extra[@]}"}; then
+    stdout_report=false
+  fi
   if [ "$explain" = false ] && version_at_least "$version" 0.13.0; then
-    case "$generate_baseline:$format" in
-      true:*|false:github|false:table|false:markdown)
+    case "$stdout_report:$format" in
+      false:*|true:github|true:table|true:markdown)
         report_by_output=true
         args+=("--output=${format}:${report}")
         ;;
@@ -228,7 +231,7 @@ withheld_token_notice() {
   local name
   for name in GITHUB_SERVER_URL GH_HOST; do
     if [ -n "${!name:-}" ] && [ "$(url_host "${!name}")" != github.com ]; then
-      notice "lockrot does not send GITHUB_TOKEN, and so the github-token input, to github.com, because ${name} names another host. To check repository activity on github.com, set LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env"
+      notice "lockrot does not send GITHUB_TOKEN, and so the github-token input, to github.com, because ${name} names another host. Unless Composer holds a github.com credential, set LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env to check repository activity on github.com"
       return 0
     fi
   done
@@ -251,7 +254,7 @@ rewrite_failed() {
 }
 
 # Fails when report path $1 names a file that lockrot reads or that the baseline is, as lockrot
-# refuses for --output: --explain and a lockrot older than 0.13.0 get stdout copied there instead.
+# refuses for --output: a report taken from stdout has no other check.
 # $2 is the working directory, and the rest are the args words. Composer reads COMPOSER relative to
 # the working directory, and every baseline is relative to the manifest's directory.
 refuse_project_file() {
@@ -408,6 +411,20 @@ has_working_dir() {
     case "$argument" in -d*|--working-dir|--working-dir=*) return 0 ;; esac
   done
   return 1
+}
+
+# Whether lockrot prints the report to stdout with the args words: --generate-baseline, a quiet
+# option, --help and --version keep it off stdout, and a short option bundle can hold -q, -h or -V.
+prints_report() {
+  local argument
+  for argument in "$@"; do
+    case "$argument" in
+      --generate-baseline|--generate-baseline=*|--quiet|--silent|--help|--version) return 1 ;;
+      --*) ;;
+      -*[qhV]*) return 1 ;;
+    esac
+  done
+  return 0
 }
 
 # Whether the arguments after $1 give option $1, with its value joined by `=` or after a space.

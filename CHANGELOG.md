@@ -35,8 +35,9 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 - **Breaking:** lockrot 0.14 sends `GITHUB_TOKEN`, and so the `github-token` input, to github.com
   only when each of `GITHUB_SERVER_URL` and `GH_HOST` is unset, empty or names github.com. On
   GitHub Enterprise Server, GHE.com, Gitea or Forgejo, and on a github.com runner whose `env` sets
-  `GH_HOST` to another host, the run is anonymous on github.com. The action then prints one notice
-  that names `LOCKROT_GITHUB_TOKEN`. Action: set `LOCKROT_GITHUB_TOKEN` to a github.com token in
+  `GH_HOST` to another host, the run is anonymous on github.com, unless Composer holds a
+  github.com credential. lockrot says so only with `-v`, so the action then prints one notice that
+  names `LOCKROT_GITHUB_TOKEN`. Action: set `LOCKROT_GITHUB_TOKEN` to a github.com token in
   the step's or job's `env`. The action does not pass the input as `LOCKROT_GITHUB_TOKEN`, because
   it cannot tell which host issued the token. The `github-token` texts and the README say so.
 - **Breaking:** without `output`, each action step writes its report in a directory of its own
@@ -84,7 +85,8 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 - With lockrot 0.13.0 or newer, the action writes the report of `format: github`, `table` or
   `markdown` through `--output=<format>:<path>`. It no longer uses a shell redirection. Under
   `generate-baseline`, every format goes through `--output`, and the report file holds the run's
-  report. For `format: json`, `sarif`, `gitlab` or `html`, lockrot renders the report once, to
+  report. So does a run with `--generate-baseline`, a quiet option, `--help` or `--version` in
+  `args`, which keeps the report off stdout. For `format: json`, `sarif`, `gitlab` or `html`, lockrot renders the report once, to
   stdout. The action moves stdout to the path after a run that exits 0 or 1, as with `--explain`
   in `args` or an older lockrot. PHP then writes its own messages, such as a startup warning, to stderr, so they cannot reach the
   document. lockrot refuses `--output` with `--explain`.
@@ -186,11 +188,6 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 - The README says that a `LOCKROT_GITHUB_TOKEN` in the step's or job's `env` wins over the
   `github-token` input, and that a Composer credential for github.com wins over both.
 - The README FAQ no longer states a size of the PHAR.
-- With lockrot 0.14.0 or newer, the step prints one notice that names `LOCKROT_GITHUB_TOKEN`. It
-  does so when `GITHUB_SERVER_URL` or `GH_HOST` names a host other than github.com, a
-  `GITHUB_TOKEN` reaches lockrot, and no `LOCKROT_GITHUB_TOKEN` does. lockrot withholds the token
-  there and said so only with `-v`. Its anonymous-cap note named `GITHUB_TOKEN`, which the action
-  had already set.
 - The `ghcr.io/somework/lockrot` image carries brotli-libs 1.2.1-r0 and libcurl 8.23.0-r0, which
   fix CVE-2026-111497 and CVE-2026-92392. The php base image digest is updated as well.
 

@@ -191,6 +191,44 @@ report_value() { output_value report | random_dirs; }
   [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=html --generate-baseline --output=html:$RUNNER_TEMP/lockrot/step/report.html" ]
 }
 
+@test "a document format with --generate-baseline in args is still written through --output" {
+  export INPUT_FORMAT=json INPUT_ARGS='--generate-baseline'
+  run_run
+  [ "$status" -eq 0 ]
+  grep -qF -- "--output=json:$RUNNER_TEMP/lockrot/step/report.json" <<< "$(main_call)"
+  [ -s "$(output_value report)" ]
+}
+
+@test "a document format with a quiet, help or version option in args is written through --output, since stdout holds no report" {
+  export INPUT_FORMAT=sarif
+  for words in '-q' '--quiet' '--silent' '-vq' '--help' '-h' '--version' '-V'; do
+    export INPUT_ARGS="$words"
+    : > "$PHP_STUB_LOG"
+    run_run
+    [ "$status" -eq 0 ]
+    # Read from the log itself: main_call drops the lines with --version.
+    grep -F -- " lockrot --format=sarif" "$PHP_STUB_LOG" | random_dirs \
+      | grep -qF -- "--output=sarif:$RUNNER_TEMP/lockrot/step/report.sarif" || { echo "args: $words"; false; }
+  done
+}
+
+@test "below lockrot 0.14.0 no token notice is printed, since that lockrot sends GITHUB_TOKEN from any host" {
+  export LOCKROT_VERSION=0.13.0 PHP_STUB_VERSION=0.13.0 GITHUB_SERVER_URL=https://ghes.example INPUT_GITHUB_TOKEN=ghs_runner
+  unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN GH_HOST
+  run_run
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"LOCKROT_GITHUB_TOKEN"* ]] || false
+}
+
+@test "a document format whose run prints a report and exits 2 leaves no file at the output path" {
+  export INPUT_FORMAT=json INPUT_OUTPUT=build/lockrot.json PHP_STUB_EXIT=2
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(output_value exit-code)" = "2" ]
+  [ ! -e "$GITHUB_WORKSPACE/build/lockrot.json" ]
+  grep -qF -- 'lockrot wrote no json report' <<< "$output"
+}
+
 @test "an absolute output path is kept" {
   export INPUT_FORMAT=json INPUT_OUTPUT="$SCRATCH/out/report.json"
   run_run
