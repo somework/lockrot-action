@@ -64,9 +64,11 @@ inputs:
       manifest, else lockrot-baseline.json. Once that check passes, the action removes a file at
       the path before lockrot runs. When lockrot then writes no report, for example on exit 2,
       the path holds no file. A directory at the path fails the step with "could not remove the
-      earlier report at <path>". From lockrot 0.13.0 the action passes the path as --output. With
-      --explain in args, or with an older lockrot, the action copies stdout to the path after a
-      run that exits 0 or 1.
+      earlier report at <path>". From lockrot 0.13.0 the action passes the path as --output for
+      format github, table or markdown, and with generate-baseline set to true. For format json,
+      sarif, gitlab or html, lockrot renders the report once, to stdout. The action moves stdout to
+      the path after a run that exits 0 or 1, as with --explain in args or an older lockrot. An
+      empty stdout leaves no file there, except from a lockrot older than 0.13.0.
     required: false
     default: ''
   dev:
@@ -121,10 +123,13 @@ inputs:
       Without a token, lockrot asks github.com only about packages already stale on release age,
       and only up to a budget of them. A package that it does not ask about carries S10, unless
       it is marked abandoned, so the unchecked value of fail-on fails on it. See
-      https://lockrot.dev/notes/#repository_activity_anonymous_cap. lockrot sends the token only
-      from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set
-      LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env instead. A
-      LOCKROT_GITHUB_TOKEN in that env wins over this input.
+      https://lockrot.dev/notes/#repository_activity_anonymous_cap. lockrot 0.14 sends the token
+      to github.com only when each of GITHUB_SERVER_URL and GH_HOST is unset, empty or names
+      github.com. So it withholds the token on GitHub Enterprise Server, GHE.com, Gitea or
+      Forgejo, and on a github.com runner whose env sets GH_HOST to another host. There, set
+      LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env instead, and the
+      action prints a notice that names it until you do. A LOCKROT_GITHUB_TOKEN in that env wins
+      over this input.
     required: false
     default: ${{ github.token }}
   php-version:
@@ -143,9 +148,11 @@ inputs:
     description: >-
       Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the
       action passes --markdown-max-bytes=1000000 unless args sets it, so lockrot leaves rows out of
-      a larger report to keep within the runner's 1 MB limit. That cap also applies to the report
-      file of format markdown, and to any markdown --output file in args. With an older lockrot, a
-      summary above 1 MB is skipped. Skipped with --explain in args, whose explanation is in the
+      a larger report to keep within the runner's 1 MB limit. That size is a target, not a hard
+      cap: lockrot leaves out table rows only, so every other part of the report
+      always prints. It also applies to the report file of format markdown, and to any markdown --output
+      file in args. The action enforces the limit itself: a summary file larger than 1 MB, from
+      any lockrot, becomes a size note. Skipped with --explain in args, whose explanation is in the
       report file (and in the step log for format table). Skipped with generate-baseline set to
       true.
     required: false
