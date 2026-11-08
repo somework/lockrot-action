@@ -107,15 +107,28 @@ main() {
     report="${step_dir}/report.$(report_extension "$format")"
   fi
   mkdir -p "$(dirname "$report")"
-  # From lockrot 0.13.0 the report goes through --output. lockrot's own check of the target is the
-  # second line of defence, after refuse_project_file. --explain refuses --output, and an older
-  # lockrot has none, so both get stdout copied there after a run that exits 0 or 1.
-  local stdout_file report_by_output=false
+  # From lockrot 0.13.0 a format the log prints goes through --output, and so does a run whose stdout
+  # holds no report. lockrot's own check of the target is then the second line of defence, after
+  # refuse_project_file. Otherwise a document format is not printed, so its stdout is the report,
+  # and lockrot renders it once. --explain refuses --output, and an older lockrot has none, so
+  # these get stdout moved there after a run that exits 0 or 1.
+  local stdout_file report_by_output=false stdout_report=true
   stdout_file="${SCRATCH_DIR}/stdout.$(report_extension "$format")"
-  if [ "$explain" = false ] && version_at_least "$version" 0.13.0; then
-    report_by_output=true
-    args+=("--output=${format}:${report}")
+  if [ "$generate_baseline" = true ] || ! prints_report ${extra[@]+"${extra[@]}"}; then
+    stdout_report=false
   fi
+  if [ "$explain" = false ] && version_at_least "$version" 0.13.0; then
+    case "$stdout_report:$format" in
+      false:*|true:github|true:table|true:markdown)
+        report_by_output=true
+        args+=("--output=${format}:${report}")
+        ;;
+    esac
+  fi
+  # A report taken from stdout must hold no PHP message, such as the startup warning of a php.ini
+  # that loads a missing extension. PHP writes those to stderr instead, which the log shows too.
+  local -a php_flags=()
+  [ "$report_by_output" = true ] || php_flags=(-d display_errors=stderr -d display_startup_errors=0)
 
   # The job summary shows the markdown format. A markdown run's own report is that. From lockrot
   # 0.13.0 another format's run writes it beside the report with --output, so both come from one
@@ -154,12 +167,13 @@ main() {
   if [ -n "$(trim "${INPUT_GITHUB_TOKEN:-}")" ]; then
     export GITHUB_TOKEN="$INPUT_GITHUB_TOKEN"
   fi
+  ! version_at_least "$version" 0.14.0 || withheld_token_notice
 
   log "running lockrot ${version}: ${args[*]}"
   # The command name first: Symfony reads the first bare word before it as a command name, so an
   # option value after a space would run another command, or none, with exit 1.
   local code=0
-  (cd "$work_dir" && php "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
+  (cd "$work_dir" && php ${php_flags[@]+"${php_flags[@]}"} "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
 
   [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir" || rewrite_failed "$stdout_file" "$code"
   case "$format" in
@@ -172,9 +186,11 @@ main() {
       report_written=true
       [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir" || rewrite_failed "$report" "$code"
     fi
-  # An explanation is never empty, so empty stdout means lockrot exited before it, as under LOCKROT_DISABLE.
-  elif [ "$code" -le 1 ] && { [ "$explain" = false ] || [ -s "$stdout_file" ]; }; then
-    cp "$stdout_file" "$report"
+  # A document or an explanation is never empty, so empty stdout means lockrot exited before it, as
+  # under LOCKROT_DISABLE. A lockrot older than 0.13.0 keeps the empty file of v1.1.0.
+  elif [ "$code" -le 1 ] && { [ -s "$stdout_file" ] \
+    || { [ "$explain" = false ] && ! version_at_least "$version" 0.13.0; }; }; then
+    mv -f -- "$stdout_file" "$report"
     report_written=true
   fi
   if [ "$report_written" = false ]; then
@@ -206,6 +222,30 @@ main() {
   set_output report "$report"
 }
 
+# From lockrot 0.14.0, lockrot withholds GITHUB_TOKEN from github.com when GITHUB_SERVER_URL or
+# GH_HOST names another host, and says so only with -v. Its anonymous-cap note then names
+# GITHUB_TOKEN, which the action already set, so this notice names the variable that works there.
+# It names the variable, not its value: a URL can carry userinfo.
+withheld_token_notice() {
+  [ -n "${GITHUB_TOKEN:-}" ] && [ -z "${LOCKROT_GITHUB_TOKEN:-}" ] || return 0
+  local name
+  for name in GITHUB_SERVER_URL GH_HOST; do
+    if [ -n "${!name:-}" ] && [ "$(url_host "${!name}")" != github.com ]; then
+      notice "lockrot does not send GITHUB_TOKEN, and so the github-token input, to github.com, because ${name} names another host. Unless Composer holds a github.com credential, set LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env to check repository activity on github.com"
+      return 0
+    fi
+  done
+}
+
+# The host of URL or bare host $1 in lower case, with its port: the text after the scheme and after
+# the last `@`, up to a path, a query, a fragment or a backslash. lockrot also cuts at the last `@`,
+# because userinfo can hold any character.
+url_host() {
+  local rest=${1#*://}
+  rest=${rest##*@}
+  printf '%s\n' "${rest%%[/?#\\]*}" | tr '[:upper:]' '[:lower:]'
+}
+
 # $1 the file, $2 lockrot's exit code. The exit-code output comes first, so a later step that
 # reads it still gets lockrot's code from a step that failed here.
 rewrite_failed() {
@@ -214,7 +254,7 @@ rewrite_failed() {
 }
 
 # Fails when report path $1 names a file that lockrot reads or that the baseline is, as lockrot
-# refuses for --output: --explain and a lockrot older than 0.13.0 get stdout copied there instead.
+# refuses for --output: a report taken from stdout has no other check.
 # $2 is the working directory, and the rest are the args words. Composer reads COMPOSER relative to
 # the working directory, and every baseline is relative to the manifest's directory.
 refuse_project_file() {
@@ -371,6 +411,20 @@ has_working_dir() {
     case "$argument" in -d*|--working-dir|--working-dir=*) return 0 ;; esac
   done
   return 1
+}
+
+# Whether lockrot prints the report to stdout with the args words: --generate-baseline, a quiet
+# option, --help and --version keep it off stdout, and a short option bundle can hold -q, -h or -V.
+prints_report() {
+  local argument
+  for argument in "$@"; do
+    case "$argument" in
+      --generate-baseline|--generate-baseline=*|--quiet|--silent|--help|--version) return 1 ;;
+      --*) ;;
+      -*[qhV]*) return 1 ;;
+    esac
+  done
+  return 0
 }
 
 # Whether the arguments after $1 give option $1, with its value joined by `=` or after a space.

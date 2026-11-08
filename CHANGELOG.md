@@ -14,7 +14,9 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 
 - **Breaking:** lockrot 0.14 reads baseline-2 only, and a baseline-1 file exits 2, which fails the
   step. Action: review the findings, then run the action once with `generate-baseline: true`. That
-  run overwrites the file, and `known_since` starts again on that day.
+  run overwrites the file, and `known_since` starts again on that day. The runner discards the
+  file when the job ends, so upload it and commit it, as the
+  [README baseline recipe](README.md#accept-what-you-have-fail-on-what-arrives) shows.
 - **Breaking:** the verdict is a grade (`critical` … `low`, or `ok`, `finished` or `unknown` at 0)
   scored from the flags, and a finding lists every flag that fired. A counted advisory flags the
   package `vulnerable`, and the new flag `capped` marks a release that stops below the newest PHP
@@ -31,10 +33,13 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   SARIF, check `runs[0].properties.lockrot_schema == 2`. Key an annotation on its file and line,
   not on its title.
 - **Breaking:** lockrot 0.14 sends `GITHUB_TOKEN`, and so the `github-token` input, to github.com
-  only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, the run
-  is anonymous on github.com. Action: set `LOCKROT_GITHUB_TOKEN` to a github.com token in the
-  step's or job's `env`. The action does not pass the input as `LOCKROT_GITHUB_TOKEN`, because it
-  cannot tell which host issued the token. The `github-token` texts and the README say so.
+  only when each of `GITHUB_SERVER_URL` and `GH_HOST` is unset, empty or names github.com. On
+  GitHub Enterprise Server, GHE.com, Gitea or Forgejo, and on a github.com runner whose `env` sets
+  `GH_HOST` to another host, the run is anonymous on github.com, unless Composer holds a
+  github.com credential. lockrot says so only with `-v`, so the action then prints one notice that
+  names `LOCKROT_GITHUB_TOKEN`. Action: set `LOCKROT_GITHUB_TOKEN` to a github.com token in
+  the step's or job's `env`. The action does not pass the input as `LOCKROT_GITHUB_TOKEN`, because
+  it cannot tell which host issued the token. The `github-token` texts and the README say so.
 - **Breaking:** without `output`, each action step writes its report in a directory of its own
   under `RUNNER_TEMP`, so a later step of the same job no longer replaces it. The old default path
   was `RUNNER_TEMP/lockrot/report.<ext>`. Action: read the path from the `report` output.
@@ -77,17 +82,23 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   follow its option after a space in `args`, such as `--explain vendor/package`. From lockrot
   0.13.0, a word in `args` that is no option value exits 2. It named another command, such as
   `self-update`, or none. Action: remove the word, or put its option before it.
-- With lockrot 0.13.0 or newer, the report goes to the `output` path through
-  `--output=<format>:<path>`, not through a shell redirection. Under `generate-baseline`, the report file holds the run's report. With `--explain` in `args`,
-  or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1.
-  lockrot refuses `--output` with `--explain`.
+- With lockrot 0.13.0 or newer, the action writes the report of `format: github`, `table` or
+  `markdown` through `--output=<format>:<path>`. It no longer uses a shell redirection. Under
+  `generate-baseline`, every format goes through `--output`, and the report file holds the run's
+  report. So does a run with `--generate-baseline`, a quiet option, `--help` or `--version` in
+  `args`, which keeps the report off stdout. For `format: json`, `sarif`, `gitlab` or `html`, lockrot renders the report once, to
+  stdout. The action moves stdout to the path after a run that exits 0 or 1, as with `--explain`
+  in `args` or an older lockrot. PHP then writes its own messages, such as a startup warning, to stderr, so they cannot reach the
+  document. lockrot refuses `--output` with `--explain`.
 - The action keeps its own temporary files in a directory of each run under `RUNNER_TEMP`, so no
   `output` path can name one of them.
 - **Breaking:** with lockrot 0.14.0 or newer and the job summary on, the action passes
   `--markdown-max-bytes=1000000` unless `args` sets it. lockrot then leaves rows out of a large
-  summary, where the action wrote only a size note. The cap also applies to the report file of
-  `format: markdown`, and to any markdown `--output` file in `args`. Action: to keep a whole
-  markdown file, set `--markdown-max-bytes` in `args`, or set `summary: false`.
+  summary, where the action wrote only a size note. The size also applies to the report file of
+  `format: markdown`, and to any markdown `--output` file in `args`. It is a target, not a hard
+  cap: lockrot leaves out table rows only, so every other part of the report always prints. A
+  summary file that is still larger than 1 MB becomes the size note. Action: to keep a whole markdown
+  file, set `--markdown-max-bytes` in `args`, or set `summary: false`.
 - The `fail-on` input describes the lockrot 0.14.0 values: a comma-separated list of a grade, a
   flag (`capped` included), a `vulnerable` value and `unchecked`, or `none`. It links the
   [CI page](https://lockrot.dev/ci/) for choosing them.

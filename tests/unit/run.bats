@@ -73,7 +73,7 @@ report_value() { output_value report | random_dirs; }
   export INPUT_FORMAT=table INPUT_ARGS='--explain=acme/pkg'
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=table --explain=acme/pkg" ]
+  [ "$(main_call)" = "-d display_errors=stderr -d display_startup_errors=0 $LOCKROT_PHAR lockrot --format=table --explain=acme/pkg" ]
   ! grep -q -- '--format=markdown' "$PHP_STUB_LOG"
   [ -s "$(output_value report)" ]
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
@@ -160,11 +160,73 @@ report_value() { output_value report | random_dirs; }
   export INPUT_FORMAT=html
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=html --output=html:$RUNNER_TEMP/lockrot/step/report.html --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
+  [ "$(main_call)" = "-d display_errors=stderr -d display_startup_errors=0 $LOCKROT_PHAR lockrot --format=html --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
   [[ "$output" != *"::warning file="* ]]
   [ "$(report_value)" = "$RUNNER_TEMP/lockrot/step/report.html" ]
   [[ "$output" == *"html report written to $(output_value report)"* ]] || false
   [ -s "$(output_value report)" ]
+}
+
+@test "a document format is rendered once, to stdout, and one lockrot run gives the report file and the step result" {
+  # Arrange: lockrot finds a finding that fails the gate.
+  export INPUT_FORMAT=json INPUT_OUTPUT=build/lockrot.json PHP_STUB_EXIT=1
+
+  # Act
+  run_run
+
+  # Assert: one lockrot run, no --output for the json report, PHP's own messages kept off stdout.
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- " lockrot --format=" "$PHP_STUB_LOG")" -eq 1 ]
+  [ "$(main_call)" = "-d display_errors=stderr -d display_startup_errors=0 $LOCKROT_PHAR lockrot --format=json --output=markdown:$RUNNER_TEMP/lockrot/run/summary.md --markdown-max-bytes=1000000" ]
+  grep -qx '1 packages checked' "$GITHUB_WORKSPACE/build/lockrot.json"
+  [ "$(output_value exit-code)" = "1" ]
+  [ "$(output_value report)" = "$GITHUB_WORKSPACE/build/lockrot.json" ]
+  [ "$(sed -n 1p "$GITHUB_STEP_SUMMARY")" = "### lockrot: stub summary" ]
+}
+
+@test "a document format under generate-baseline is still written through --output, since stdout stays empty" {
+  export INPUT_FORMAT=html INPUT_GENERATE_BASELINE=true
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=html --generate-baseline --output=html:$RUNNER_TEMP/lockrot/step/report.html" ]
+}
+
+@test "a document format with --generate-baseline in args is still written through --output" {
+  export INPUT_FORMAT=json INPUT_ARGS='--generate-baseline'
+  run_run
+  [ "$status" -eq 0 ]
+  grep -qF -- "--output=json:$RUNNER_TEMP/lockrot/step/report.json" <<< "$(main_call)"
+  [ -s "$(output_value report)" ]
+}
+
+@test "a document format with a quiet, help or version option in args is written through --output, since stdout holds no report" {
+  export INPUT_FORMAT=sarif
+  for words in '-q' '--quiet' '--silent' '-vq' '--help' '-h' '--version' '-V'; do
+    export INPUT_ARGS="$words"
+    : > "$PHP_STUB_LOG"
+    run_run
+    [ "$status" -eq 0 ]
+    # Read from the log itself: main_call drops the lines with --version.
+    grep -F -- " lockrot --format=sarif" "$PHP_STUB_LOG" | random_dirs \
+      | grep -qF -- "--output=sarif:$RUNNER_TEMP/lockrot/step/report.sarif" || { echo "args: $words"; false; }
+  done
+}
+
+@test "below lockrot 0.14.0 no token notice is printed, since that lockrot sends GITHUB_TOKEN from any host" {
+  export LOCKROT_VERSION=0.13.0 PHP_STUB_VERSION=0.13.0 GITHUB_SERVER_URL=https://ghes.example INPUT_GITHUB_TOKEN=ghs_runner
+  unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN GH_HOST
+  run_run
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"LOCKROT_GITHUB_TOKEN"* ]] || false
+}
+
+@test "a document format whose run prints a report and exits 2 leaves no file at the output path" {
+  export INPUT_FORMAT=json INPUT_OUTPUT=build/lockrot.json PHP_STUB_EXIT=2
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(output_value exit-code)" = "2" ]
+  [ ! -e "$GITHUB_WORKSPACE/build/lockrot.json" ]
+  grep -qF -- 'lockrot wrote no json report' <<< "$output"
 }
 
 @test "an absolute output path is kept" {
@@ -202,6 +264,42 @@ report_value() { output_value report | random_dirs; }
   run_run
   [ "$status" -eq 0 ]
   [ "$(tail -n 1 "$SCRATCH/env.log")" = "ghp_ghes_pat|unset" ]
+}
+
+@test "a token that lockrot withholds because GITHUB_SERVER_URL names another host gets one notice that names LOCKROT_GITHUB_TOKEN" {
+  export GITHUB_SERVER_URL=https://ghes.example GH_HOST=ghes.example INPUT_GITHUB_TOKEN=ghs_runner
+  unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^::notice::lockrot-action: .*LOCKROT_GITHUB_TOKEN' <<< "$output")" -eq 1 ]
+  [[ "$output" != *"ghs_runner"* ]] || false
+}
+
+@test "a token that lockrot withholds because GH_HOST names another host on a github.com runner gets the notice" {
+  export GITHUB_SERVER_URL=https://github.com GH_HOST=https://user@GHE.example:8443/x INPUT_GITHUB_TOKEN=
+  export GITHUB_TOKEN=ghs_job
+  unset LOCKROT_GITHUB_TOKEN
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^::notice::lockrot-action: .*GH_HOST.*LOCKROT_GITHUB_TOKEN' <<< "$output")" -eq 1 ]
+  [[ "$output" != *"user@"* ]] || false
+}
+
+@test "no token notice when the hosts name github.com, when LOCKROT_GITHUB_TOKEN is set, or when no token is set" {
+  unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN
+  export GITHUB_SERVER_URL=https://GitHub.com/ GH_HOST=github.com INPUT_GITHUB_TOKEN=ghs_runner
+  run_run
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"LOCKROT_GITHUB_TOKEN"* ]] || false
+
+  export GITHUB_SERVER_URL=https://ghes.example LOCKROT_GITHUB_TOKEN=ghp_dotcom
+  run_run
+  [[ "$output" != *"LOCKROT_GITHUB_TOKEN"* ]] || false
+
+  unset LOCKROT_GITHUB_TOKEN
+  export INPUT_GITHUB_TOKEN=
+  run_run
+  [[ "$output" != *"LOCKROT_GITHUB_TOKEN"* ]] || false
 }
 
 @test "a LOCKROT_GITHUB_TOKEN from the job environment reaches lockrot beside the input token" {
@@ -284,7 +382,7 @@ exit-code=0"
   export INPUT_FORMAT=table INPUT_ARGS='--explain acme/pkg'
   run_run
   [ "$status" -eq 0 ]
-  [ "$(main_call)" = "$LOCKROT_PHAR lockrot --format=table --explain acme/pkg" ]
+  [ "$(main_call)" = "-d display_errors=stderr -d display_startup_errors=0 $LOCKROT_PHAR lockrot --format=table --explain acme/pkg" ]
   [ ! -s "$GITHUB_STEP_SUMMARY" ]
 }
 

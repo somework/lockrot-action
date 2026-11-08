@@ -41,7 +41,8 @@ other CI systems and local runs.
    makes almost no requests.
 4. **Runs lockrot** in `working-directory` with the options you set, from the token in
    `github-token` (the workflow's own `GITHUB_TOKEN` by default) so repository-activity checks on
-   github.com are not capped. On another host's runner, set `LOCKROT_GITHUB_TOKEN` instead.
+   github.com are not capped. When `GITHUB_SERVER_URL` or `GH_HOST` names another host, set
+   `LOCKROT_GITHUB_TOKEN` instead.
 5. **Reports**: with `format: github` (the default) every flagged package becomes an annotation on
    its own line of `composer.lock` in the pull request. Every format also lands in the job summary
    as a table, and the report file path comes back as an output. With `--explain` in `args`, the
@@ -63,7 +64,7 @@ other CI systems and local runs.
 | `fail-on` | *(lockrot's own default: `none`)* | Comma-separated values that fail the step, at most one of each kind. A grade: `critical`, `high`, `medium` or `low`, which fails on that grade or a higher one. A flag: `abandoned`, `silent`, `pinned`, `left-behind`, `old-promise`, `stale` or `capped`. A flag fails on itself and on each flag before it in this order. A `vulnerable` value: `vulnerable` (any severity), `vulnerable-medium`, `vulnerable-high` or `vulnerable-critical`, which fails on that severity or a higher one. `unchecked` fails on a finding whose check did not run. `none` stands alone. Example: `left-behind,vulnerable-high`. Empty defers to `LOCKROT_FAIL_ON`, then to `extra.lockrot.fail-on` in the manifest. See [choosing the values](https://lockrot.dev/ci/) |
 | `target-php` | *(`LOCKROT_TARGET_PHP`, then `extra.lockrot.target-php`, then `config.platform.php`, then the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html`. An empty value runs `github`. The action always passes `--format`, so `extra.lockrot.format` does not apply. A `--format` in `args` fails the step before lockrot runs |
-| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. The step fails before lockrot runs when the path names a `composer.json` or `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else `lockrot-baseline.json`. Once that check passes, the action removes a file at the path before lockrot runs. When lockrot then writes no report, for example on exit 2, the path holds no file. A directory at the path fails the step with `could not remove the earlier report at <path>`. From lockrot 0.13.0 the action passes the path as `--output`. With `--explain` in `args`, or with an older lockrot, the action copies stdout to the path after a run that exits 0 or 1 |
+| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. The step fails before lockrot runs when the path names a `composer.json` or `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else `lockrot-baseline.json`. Once that check passes, the action removes a file at the path before lockrot runs. When lockrot then writes no report, for example on exit 2, the path holds no file. A directory at the path fails the step with `could not remove the earlier report at <path>`. From lockrot 0.13.0 the action passes the path as `--output` for `format: github`, `table` or `markdown`, and with `generate-baseline: true`. Otherwise, for `format: json`, `sarif`, `gitlab` or `html`, lockrot renders the report once, to stdout. A `--generate-baseline`, a quiet option, `--help` or `--version` in `args` keeps the report off stdout, so it goes through `--output` too. The action moves stdout to the path after a run that exits 0 or 1, as with `--explain` in `args` or an older lockrot. An empty stdout leaves no file there, except from a lockrot older than 0.13.0 without `--explain` |
 | `working-directory` | `.` | Directory where lockrot runs, relative to the workspace. It holds `composer.json` and `composer.lock`, unless `COMPOSER` names another manifest. `COMPOSER` is read relative to this directory |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
 | `all` | `false` | Report every checked package, not only flagged ones (`--all`) |
@@ -73,10 +74,10 @@ other CI systems and local runs.
 | `args` | | Extra lockrot options, split on whitespace. The action passes the `lockrot` command name first, so a value can follow its option after a space (`--explain vendor/package`). From lockrot 0.13.0, a misspelt option, or a word that is no option value, fails the step with exit 2. An older lockrot exits 1 there. A `--format` in `args` fails the step before lockrot runs: set the `format` input instead. A `-d` or `--working-dir` in `args` fails the step before lockrot runs too: set the `working-directory` input instead. The action always passes `--format`, so `--explain=vendor/package` needs `format: table` or `format: json` and exits 2 with any other format. It also exits 2 with `generate-baseline: true`. lockrot takes `--fail-on`, `--baseline` and `--target-php` once only, so one of them in `args` exits 2 when the input of the same name is set |
 | `version` | *(pinned in `lockrot.env`)* | lockrot release to run: empty, `latest`, or a version such as `0.2.2` |
 | `checksum` | | sha256 the downloaded `lockrot.phar` must have; overrides the pinned or published one |
-| `github-token` | `${{ github.token }}` | Token for repository-activity checks on github.com, passed to lockrot as `GITHUB_TOKEN`. Without a token, lockrot asks github.com only about packages already stale on release age, and only up to a budget of them ([anonymous cap](https://lockrot.dev/notes/#repository_activity_anonymous_cap)). A package that it does not ask about carries S10, unless it is marked abandoned, so `fail-on: unchecked` fails on it. lockrot sends the token only from a github.com runner. On GitHub Enterprise Server, GHE.com, Gitea or Forgejo, set `LOCKROT_GITHUB_TOKEN` to a github.com token in the step's or job's `env` instead. A `LOCKROT_GITHUB_TOKEN` in that `env` wins over this input |
+| `github-token` | `${{ github.token }}` | Token for repository-activity checks on github.com, passed to lockrot as `GITHUB_TOKEN`. Without a token, lockrot asks github.com only about packages already stale on release age, and only up to a budget of them ([anonymous cap](https://lockrot.dev/notes/#repository_activity_anonymous_cap)). A package that it does not ask about carries S10, unless it is marked abandoned, so `fail-on: unchecked` fails on it. lockrot 0.14 sends the token to github.com only when each of `GITHUB_SERVER_URL` and `GH_HOST` is unset, empty or names github.com. So it withholds the token on GitHub Enterprise Server, GHE.com, Gitea or Forgejo, and on a github.com runner whose `env` sets `GH_HOST` to another host. There, set `LOCKROT_GITHUB_TOKEN` to a github.com token in the step's or job's `env` instead, and the action prints a notice that names it until you do. A `LOCKROT_GITHUB_TOKEN` in that `env` wins over this input |
 | `php-version` | | PHP to install with setup-php before running. Empty uses the runner's PHP when it is 7.4+ |
 | `cache` | `true` | Cache Composer repository metadata and lockrot's repository-activity answers from GitHub, GitLab and Bitbucket between runs |
-| `summary` | `true` | Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the action passes `--markdown-max-bytes=1000000` unless `args` sets it, so lockrot leaves rows out of a larger report to keep within the runner's 1 MB limit. That cap also applies to the report file of `format: markdown`, and to any markdown `--output` file in `args`. With an older lockrot, a summary above 1 MB is skipped. Skipped with `--explain` in `args`, whose explanation is in the report file (and in the step log for `format: table`). Skipped with `generate-baseline: true` |
+| `summary` | `true` | Add the report, rendered as markdown, to the job summary. With lockrot 0.14.0 or newer the action passes `--markdown-max-bytes=1000000` unless `args` sets it, so lockrot leaves rows out of a larger report to keep within the runner's 1 MB limit. That size is a target, not a hard cap: lockrot leaves out table rows only, so every other part of the report always prints. It also applies to the report file of `format: markdown`, and to any markdown `--output` file in `args`. The action enforces the limit itself: a summary file larger than 1 MB, from any lockrot, becomes a size note. Skipped with `--explain` in `args`, whose explanation is in the report file (and in the step log for `format: table`). Skipped with `generate-baseline: true` |
 
 Every lockrot option not listed here can be passed through `args`. Some options can also live
 under `extra.lockrot` in `composer.json` — see the
@@ -130,8 +131,8 @@ Each annotation takes lockrot's mark for the finding: `error` when its own fact 
 ([how each format marks a finding](https://lockrot.dev/ci/#how-each-format-marks-a-finding)). GitHub renders
 a limited number of annotations per step. The log holds every annotation. The job summary holds
 the whole report up to the runner's 1 MB limit. Above that limit, lockrot 0.14.0 or newer leaves
-rows out of the summary, unless `args` sets a larger `--markdown-max-bytes`. In that case, and
-with an older lockrot, the summary holds only a size note.
+rows out of the summary, unless `args` sets a larger `--markdown-max-bytes`. A summary file that
+is still larger than the limit, such as from an older lockrot, holds only a size note.
 
 ### SARIF in the Security tab
 
@@ -217,8 +218,10 @@ steps:
 ```
 
 GitHub refuses a comment body above 65,536 characters. `--markdown-max-bytes` makes lockrot leave
-rows out of a larger report and add a row that counts them, instead of `gh pr comment` failing. It
-caps the job summary of the same run too. Needs lockrot 0.14.0 or newer.
+rows out of a larger report and add a row that counts them. `gh pr comment` then takes the body. The
+size is a target, not a hard cap: lockrot leaves out table rows only, so a report whose other
+parts alone are larger stays larger than that size. Those parts are far smaller than 65,536
+bytes in practice. The option applies to the job summary of the same run too. Needs lockrot 0.14.0 or newer.
 
 ### Accept what you have, fail on what arrives
 
@@ -231,9 +234,38 @@ git add lockrot-baseline.json && git commit -m "chore: accept current dependency
 ```
 
 Every later run with a `lockrot-baseline.json` next to `composer.json` compares against it
-automatically; no extra input is needed. The `generate-baseline` input does the same on a runner —
-useful in a scheduled job that commits the file through a pull request — but the workspace is
-discarded when the job ends, so on its own the file goes nowhere.
+automatically, with no extra input. The `generate-baseline` input does the same on a runner. The
+runner discards the workspace when the job ends, so on its own the file goes nowhere. Upload the
+file, then commit it yourself:
+
+```yaml
+permissions:
+  contents: read
+
+steps:
+  - uses: actions/checkout@v7
+  - uses: somework/lockrot-action@v1
+    with:
+      target-php: '8.4'
+      generate-baseline: true
+  - uses: actions/upload-artifact@v7
+    with:
+      name: lockrot-baseline
+      path: lockrot-baseline.json
+      if-no-files-found: error
+```
+
+1. Run the job once, and download the `lockrot-baseline` artifact from the run page.
+2. Put the file at the path where the step wrote it, then commit it.
+3. Remove `generate-baseline: true` from the job, so later runs compare against the file.
+
+The step writes the file at the path that the `baseline` input, a `--baseline` in `args` or
+`extra.lockrot.baseline` names, else at `lockrot-baseline.json`. lockrot uses an absolute path as
+it is. A relative path starts at the directory of the manifest that the
+job uses. The upload `path` starts at the checkout root, so put that directory first, such as
+`apps/api/lockrot-baseline.json`. To replace a baseline-1 file for lockrot 0.14, follow
+[the baseline steps of the 0.14 upgrade page](https://lockrot.dev/changes/0.14/#baselines). They
+move the baseline-1 file aside first, so that you can review the findings.
 
 ### A project in a subdirectory
 
@@ -329,7 +361,8 @@ can drop, so `--fail-on=high` reads a high advisory with a reachable fix in it a
 
 lockrot itself reads `composer.lock` and `composer.json`. It writes the job summary file that the
 action asks for, and the baseline on `generate-baseline`. From lockrot 0.13.0 it also writes the
-report file, except with `--explain` in `args`. Otherwise the action copies the report there. It never runs the project's own Composer plugins or scripts.
+report file for `format: github`, `table` or `markdown`, and on `generate-baseline`. Otherwise the
+action moves lockrot's stdout there. It never runs the project's own Composer plugins or scripts.
 
 ## Versioning
 
