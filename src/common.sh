@@ -8,8 +8,9 @@ LOCKROT_RELEASES="https://github.com/${LOCKROT_REPO}/releases"
 # Workflow commands: a `::error::` line is what turns a script failure into a red annotation.
 # Written to stderr so the message survives when the failing function runs inside `$(...)`,
 # whose stdout is captured and discarded by the failing assignment.
+error() { printf '::error::lockrot-action: %s\n' "$*" >&2; }
 fail() {
-  printf '::error::lockrot-action: %s\n' "$*" >&2
+  error "$@"
   exit 1
 }
 warn() { printf '::warning::lockrot-action: %s\n' "$*"; }
