@@ -129,6 +129,11 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 
 ### Fixed
 
+- On a macOS runner without PHP, the action installs PHP with shivammathur/setup-php 2.40.0. With
+  2.37.2, setup-php ran for about 30 minutes and then failed with `Could not setup PHP 8.5`
+  ([shivammathur/setup-php#1125](https://github.com/shivammathur/setup-php/issues/1125)). 2.40.0
+  writes Composer's `auth.json` as 2.37.2 did, so the step still clears `GITHUB_TOKEN` and
+  `COMPOSER_TOKEN` for setup-php.
 - The `exit-code` and `report` outputs are set before the action moves the report and appends
   the job summary. A report that the action cannot move to the `output` path fails the step with
   an error that names the path. A job summary file that takes no append gives an error that names
