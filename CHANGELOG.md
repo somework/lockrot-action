@@ -15,15 +15,16 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 - **Breaking:** lockrot 0.14 reads baseline-2 only, and a baseline-1 file exits 2, which fails the
   step. So no check run shows findings while the baseline-1 file is in place. Action, in this
   order:
-  1. Move the baseline-1 file aside, for example with `git mv`, and push. When the `baseline` input
-     or `extra.lockrot.baseline` names the file, remove the input or the key in the same commit.
-     A run without the file that they name exits 2.
+  1. Move the baseline-1 file aside, for example with `git mv`, and push. When the `baseline` input,
+     a `--baseline` in `args` or `extra.lockrot.baseline` names the file, remove that setting in
+     the same commit. A run without the file that it names exits 2. Without these settings,
+     lockrot reads a `lockrot-baseline.json` beside the manifest, so move that file aside too.
   2. Read the findings of the next run. It has no baseline, so a `fail-on` gate can fail.
   3. In one commit, set `generate-baseline: true`, add the upload step of the
      [README baseline recipe](README.md#accept-what-you-have-fail-on-what-arrives), and put back
-     an input or a key that you removed. That run writes a baseline-2 file, and `known_since`
-     starts again on that day. Until you commit the new file, a run that reads the input or the
-     key exits 2.
+     a setting that you removed. The run on that commit writes a baseline-2 file, and
+     `known_since` starts again on that day. Until you commit the new file, any other run on that
+     commit exits 2.
   4. Download the file from the run page, and commit it at the path where the step wrote it.
      Remove `generate-baseline: true` and the moved baseline-1 file.
 

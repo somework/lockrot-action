@@ -249,8 +249,9 @@ report_value() { output_value report | random_dirs; }
 }
 
 @test "a job summary that cannot be appended gives an error that names the file, and the step keeps lockrot's exit code" {
-  [ "$(id -u)" -ne 0 ] || skip "root ignores file modes"
-  chmod 444 "$GITHUB_STEP_SUMMARY"
+  # A directory takes no append, also for root.
+  mkdir "$SCRATCH/summary-dir"
+  export GITHUB_STEP_SUMMARY="$SCRATCH/summary-dir"
   # The summary from --output, and the summary from a second run before lockrot 0.13.0.
   for version in 9.9.9 0.12.0; do
     export LOCKROT_VERSION=$version PHP_STUB_VERSION=$version INPUT_FORMAT=json INPUT_OUTPUT=build/lockrot.json PHP_STUB_EXIT=1
