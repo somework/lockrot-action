@@ -156,7 +156,8 @@ inputs:
       file in args. The action enforces the limit itself: a summary file larger than 1 MB, from
       any lockrot, becomes a size note. Skipped with --explain in args, whose explanation is in the
       report file (and in the step log for format table). Skipped with generate-baseline set to
-      true.
+      true. A job summary file that takes no append gives an error that names it, and the step
+      still ends with lockrot's exit code.
     required: false
     default: 'true'
 
@@ -177,7 +178,8 @@ outputs:
     description: >-
       Path of the report file in the requested format. Without the output input, each step gets
       a path of its own. The file is missing when lockrot ran and wrote no report in this step,
-      for example on exit 2.
+      for example on exit 2. It is also missing when the action could not move the report to the
+      path, which fails the step with an error that names the path.
     value: ${{ steps.run.outputs.report }}
   version:
     description: The lockrot version that ran.

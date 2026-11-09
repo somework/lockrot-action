@@ -174,7 +174,8 @@ main() {
   # option value after a space would run another command, or none, with exit 1.
   local code=0
   (cd "$work_dir" && php ${php_flags[@]+"${php_flags[@]}"} "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
-  # Set before any step below can fail, so a later step that reads them gets lockrot's code.
+  # Set before the rewrite, the move and the summary, so a later job step that reads them gets
+  # lockrot's code when one of these fails.
   set_output exit-code "$code"
   set_output report "$report"
 
@@ -223,7 +224,7 @@ main() {
 }
 
 # From lockrot 0.14.0, lockrot withholds GITHUB_TOKEN from github.com when GITHUB_SERVER_URL or
-# GH_HOST names another host, and says so only with -v. Its anonymous-cap note then names
+# GH_HOST names another host or reads as two hosts, and says so only with -v. Its anonymous-cap note then names
 # GITHUB_TOKEN, which the action already set, so this notice names the variable that works there.
 # It names the variable, not its value: a URL can carry userinfo.
 withheld_token_notice() {
@@ -232,7 +233,7 @@ withheld_token_notice() {
   for name in GITHUB_SERVER_URL GH_HOST; do
     [ -n "${!name:-}" ] || continue
     # lockrot also reads the host of the authority alone, which ends at the first `/`, `?` or `#`.
-    authority=${!name#*://}
+    authority=$(without_scheme "${!name}")
     authority=${authority%%[/?#]*}
     if [ "$(url_host "${!name}")" != github.com ]; then
       reason="${name} names another host"
@@ -248,11 +249,23 @@ withheld_token_notice() {
 
 # The host of URL or bare host $1 in lower case, with its port: the text after the scheme and after
 # the last `@`, up to a path, a query, a fragment or a backslash. lockrot also cuts at the last `@`,
-# because userinfo can hold any character.
+# because userinfo can hold any character. An empty port is no port, as for PHP's parse_url.
 url_host() {
-  local rest=${1#*://}
+  local rest
+  rest=$(without_scheme "$1")
   rest=${rest##*@}
-  printf '%s\n' "${rest%%[/?#\\]*}" | tr '[:upper:]' '[:lower:]'
+  rest=${rest%%[/?#\\]*}
+  printf '%s\n' "${rest%:}" | tr '[:upper:]' '[:lower:]'
+}
+
+# $1 without a leading scheme and `://`, as PHP's parse_url reads a scheme. A `://` after text that
+# is no scheme stays, so the value reads as a bare host, as lockrot reads it.
+without_scheme() {
+  if [[ "$1" =~ ^[A-Za-z0-9+.-]+:// ]]; then
+    printf '%s\n' "${1#*://}"
+  else
+    printf '%s\n' "$1"
+  fi
 }
 
 # Fails when report path $1 names a file that lockrot reads or that the baseline is, as lockrot
@@ -443,22 +456,23 @@ has_option() {
 # within this size (--markdown-max-bytes); from an older lockrot, a larger report is left to the
 # log and the report file. A summary rendered by a second, offline run carries an offline note
 # that is an artefact of that run, not of the one it shows, so it is dropped; `keep-notes` is for a
-# summary the main run wrote itself, whose notes are all its own.
+# summary the main run wrote itself, whose notes are all its own. A summary file that takes no
+# append gives an error but does not fail the step, which keeps lockrot's exit code and the cache.
 SUMMARY_LIMIT_BYTES=1000000
 append_summary() {
   local size failed="could not append the job summary to ${GITHUB_STEP_SUMMARY}"
   size=$(wc -c < "$1" | tr -d ' ')
   if [ "$size" -gt "$SUMMARY_LIMIT_BYTES" ]; then
-    printf '### lockrot\n\nThe report is %s bytes, more than the job summary can hold; see the step log or the report file.\n' "$size" >> "$GITHUB_STEP_SUMMARY" || fail "$failed"
+    printf '### lockrot\n\nThe report is %s bytes, more than the job summary can hold; see the step log or the report file.\n' "$size" >> "$GITHUB_STEP_SUMMARY" || error "$failed"
     return 0
   fi
   if [ "${2:-}" = keep-notes ]; then
-    cat "$1" >> "$GITHUB_STEP_SUMMARY" || fail "$failed"
+    cat "$1" >> "$GITHUB_STEP_SUMMARY" || error "$failed"
     return 0
   fi
   # grep exits 1 when it keeps no line, so only the redirection of the group can fail it.
   { grep -v -F -x -e "- note: offline: repository metadata served from Composer's cache" "$1" || true; } \
-    >> "$GITHUB_STEP_SUMMARY" || fail "$failed"
+    >> "$GITHUB_STEP_SUMMARY" || error "$failed"
 }
 
 # The markdown format is the one shaped for a page, so it is what the job summary shows. When the
