@@ -174,8 +174,11 @@ main() {
   # option value after a space would run another command, or none, with exit 1.
   local code=0
   (cd "$work_dir" && php ${php_flags[@]+"${php_flags[@]}"} "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
+  # Set before any step below can fail, so a later step that reads them gets lockrot's code.
+  set_output exit-code "$code"
+  set_output report "$report"
 
-  [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir" || rewrite_failed "$stdout_file" "$code"
+  [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir" || fail "could not rewrite the annotation paths in ${stdout_file}"
   case "$format" in
     github|table|markdown) cat "$stdout_file" ;;
   esac
@@ -184,13 +187,13 @@ main() {
   if [ "$report_by_output" = true ]; then
     if [ -f "$report" ]; then
       report_written=true
-      [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir" || rewrite_failed "$report" "$code"
+      [ "$format" != github ] || rewrite_annotation_paths "$report" "$work_dir" || fail "could not rewrite the annotation paths in ${report}"
     fi
   # A document or an explanation is never empty, so empty stdout means lockrot exited before it, as
   # under LOCKROT_DISABLE. A lockrot older than 0.13.0 keeps the empty file of v1.1.0.
   elif [ "$code" -le 1 ] && { [ -s "$stdout_file" ] \
     || { [ "$explain" = false ] && ! version_at_least "$version" 0.13.0; }; }; then
-    mv -f -- "$stdout_file" "$report"
+    mv -f -- "$stdout_file" "$report" || fail "could not write the report to ${report}"
     report_written=true
   fi
   if [ "$report_written" = false ]; then
@@ -217,9 +220,6 @@ main() {
       log "job summary skipped: lockrot exited with ${code} and wrote no summary"
     fi
   fi
-
-  set_output exit-code "$code"
-  set_output report "$report"
 }
 
 # From lockrot 0.14.0, lockrot withholds GITHUB_TOKEN from github.com when GITHUB_SERVER_URL or
@@ -228,12 +228,21 @@ main() {
 # It names the variable, not its value: a URL can carry userinfo.
 withheld_token_notice() {
   [ -n "${GITHUB_TOKEN:-}" ] && [ -z "${LOCKROT_GITHUB_TOKEN:-}" ] || return 0
-  local name
+  local name authority reason
   for name in GITHUB_SERVER_URL GH_HOST; do
-    if [ -n "${!name:-}" ] && [ "$(url_host "${!name}")" != github.com ]; then
-      notice "lockrot does not send GITHUB_TOKEN, and so the github-token input, to github.com, because ${name} names another host. Unless Composer holds a github.com credential, set LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env to check repository activity on github.com"
-      return 0
+    [ -n "${!name:-}" ] || continue
+    # lockrot also reads the host of the authority alone, which ends at the first `/`, `?` or `#`.
+    authority=${!name#*://}
+    authority=${authority%%[/?#]*}
+    if [ "$(url_host "${!name}")" != github.com ]; then
+      reason="${name} names another host"
+    elif [ "$(url_host "$authority")" != github.com ] || [[ "$authority" == *\\* ]]; then
+      reason="URL parsers read ${name} two ways"
+    else
+      continue
     fi
+    notice "lockrot does not send GITHUB_TOKEN, and so the github-token input, to github.com, because ${reason}. Unless Composer holds a github.com credential, set LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env to check repository activity on github.com"
+    return 0
   done
 }
 
@@ -244,13 +253,6 @@ url_host() {
   local rest=${1#*://}
   rest=${rest##*@}
   printf '%s\n' "${rest%%[/?#\\]*}" | tr '[:upper:]' '[:lower:]'
-}
-
-# $1 the file, $2 lockrot's exit code. The exit-code output comes first, so a later step that
-# reads it still gets lockrot's code from a step that failed here.
-rewrite_failed() {
-  set_output exit-code "$2"
-  fail "could not rewrite the annotation paths in $1"
 }
 
 # Fails when report path $1 names a file that lockrot reads or that the baseline is, as lockrot
@@ -444,18 +446,19 @@ has_option() {
 # summary the main run wrote itself, whose notes are all its own.
 SUMMARY_LIMIT_BYTES=1000000
 append_summary() {
-  local size
+  local size failed="could not append the job summary to ${GITHUB_STEP_SUMMARY}"
   size=$(wc -c < "$1" | tr -d ' ')
   if [ "$size" -gt "$SUMMARY_LIMIT_BYTES" ]; then
-    printf '### lockrot\n\nThe report is %s bytes, more than the job summary can hold; see the step log or the report file.\n' "$size" >> "$GITHUB_STEP_SUMMARY"
+    printf '### lockrot\n\nThe report is %s bytes, more than the job summary can hold; see the step log or the report file.\n' "$size" >> "$GITHUB_STEP_SUMMARY" || fail "$failed"
     return 0
   fi
   if [ "${2:-}" = keep-notes ]; then
-    cat "$1" >> "$GITHUB_STEP_SUMMARY"
+    cat "$1" >> "$GITHUB_STEP_SUMMARY" || fail "$failed"
     return 0
   fi
-  grep -v -F -x -e "- note: offline: repository metadata served from Composer's cache" "$1" \
-    >> "$GITHUB_STEP_SUMMARY" || true
+  # grep exits 1 when it keeps no line, so only the redirection of the group can fail it.
+  { grep -v -F -x -e "- note: offline: repository metadata served from Composer's cache" "$1" || true; } \
+    >> "$GITHUB_STEP_SUMMARY" || fail "$failed"
 }
 
 # The markdown format is the one shaped for a page, so it is what the job summary shows. When the

@@ -229,6 +229,39 @@ report_value() { output_value report | random_dirs; }
   grep -qF -- 'lockrot wrote no json report' <<< "$output"
 }
 
+@test "a report that cannot be moved to the output path fails the step with an error that names the path, and keeps lockrot's exit code" {
+  # Arrange: the output directory exists but takes no new file.
+  mkdir -p "$GITHUB_WORKSPACE/locked"
+  chmod 555 "$GITHUB_WORKSPACE/locked"
+  export INPUT_FORMAT=sarif INPUT_OUTPUT=locked/lockrot.sarif PHP_STUB_EXIT=1
+
+  # Act
+  run_run
+  chmod 755 "$GITHUB_WORKSPACE/locked"
+
+  # Assert
+  [ "$status" -eq 1 ]
+  grep -qxF -- "::error::lockrot-action: could not write the report to $GITHUB_WORKSPACE/locked/lockrot.sarif" <<< "$output"
+  [ "$(output_value exit-code)" = "1" ]
+  [ "$(output_value report)" = "$GITHUB_WORKSPACE/locked/lockrot.sarif" ]
+  [ ! -e "$GITHUB_WORKSPACE/locked/lockrot.sarif" ]
+}
+
+@test "a job summary that cannot be appended fails the step with an error that names the file, and keeps lockrot's exit code" {
+  chmod 444 "$GITHUB_STEP_SUMMARY"
+  # The summary from --output, and the summary from a second run before lockrot 0.13.0.
+  for version in 9.9.9 0.12.0; do
+    export LOCKROT_VERSION=$version PHP_STUB_VERSION=$version INPUT_FORMAT=json INPUT_OUTPUT=build/lockrot.json PHP_STUB_EXIT=1
+    : > "$GITHUB_OUTPUT"
+    run_run
+    [ "$status" -eq 1 ] || { echo "lockrot $version"; false; }
+    grep -qxF -- "::error::lockrot-action: could not append the job summary to $GITHUB_STEP_SUMMARY" <<< "$output"
+    [ "$(output_value exit-code)" = "1" ]
+    [ "$(output_value report)" = "$GITHUB_WORKSPACE/build/lockrot.json" ]
+    grep -qx '1 packages checked' "$GITHUB_WORKSPACE/build/lockrot.json"
+  done
+}
+
 @test "an absolute output path is kept" {
   export INPUT_FORMAT=json INPUT_OUTPUT="$SCRATCH/out/report.json"
   run_run
@@ -285,9 +318,28 @@ report_value() { output_value report | random_dirs; }
   [[ "$output" != *"user@"* ]] || false
 }
 
+@test "a token that lockrot withholds because the issuer reads two ways gets the notice, without the text before the @" {
+  unset LOCKROT_GITHUB_TOKEN GH_HOST
+  export GITHUB_TOKEN=ghs_job INPUT_GITHUB_TOKEN=
+  # An @ in the path, and a backslash before the last @.
+  for url in 'https://ghe.example.com/@github.com' 'https://ghe.example.com\@github.com'; do
+    export GITHUB_SERVER_URL=$url
+    run_run
+    [ "$status" -eq 0 ]
+    [ "$(grep -c '^::notice::lockrot-action: .*URL parsers read GITHUB_SERVER_URL two ways.*LOCKROT_GITHUB_TOKEN' <<< "$output")" -eq 1 ] || { echo "url: $url"; false; }
+    [[ "$output" != *"ghe.example.com"* ]] || false
+  done
+}
+
 @test "no token notice when the hosts name github.com, when LOCKROT_GITHUB_TOKEN is set, or when no token is set" {
   unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN
   export GITHUB_SERVER_URL=https://GitHub.com/ GH_HOST=github.com INPUT_GITHUB_TOKEN=ghs_runner
+  run_run
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"LOCKROT_GITHUB_TOKEN"* ]] || false
+
+  # Userinfo before github.com is cut, as lockrot cuts it.
+  export GITHUB_SERVER_URL='https://x-access:a@b@github.com/org'
   run_run
   [ "$status" -eq 0 ]
   [[ "$output" != *"LOCKROT_GITHUB_TOKEN"* ]] || false

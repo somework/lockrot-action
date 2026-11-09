@@ -13,10 +13,19 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 ### Changed
 
 - **Breaking:** lockrot 0.14 reads baseline-2 only, and a baseline-1 file exits 2, which fails the
-  step. Action: review the findings, then run the action once with `generate-baseline: true`. That
-  run overwrites the file, and `known_since` starts again on that day. The runner discards the
-  file when the job ends, so upload it and commit it, as the
-  [README baseline recipe](README.md#accept-what-you-have-fail-on-what-arrives) shows.
+  step. So no run shows findings while the baseline-1 file is in place. Action, in this order:
+  1. Move the baseline-1 file aside, for example with `git mv`, and push. When the `baseline` input
+     or `extra.lockrot.baseline` names the file, remove the input or the key in the same commit.
+     A run without the file that they name exits 2.
+  2. Read the findings of the run on that push. It has no baseline, so a `fail-on` gate can fail.
+  3. Put back an input or a key that you removed. Run the action once with
+     `generate-baseline: true`. That run writes a baseline-2 file, and `known_since` starts again
+     on that day.
+  4. The runner discards the file when the job ends. Upload it and commit it, as the
+     [README baseline recipe](README.md#accept-what-you-have-fail-on-what-arrives) shows.
+
+  The [baseline steps of the 0.14 upgrade page](https://lockrot.dev/changes/0.14/#baselines) have
+  the commands.
 - **Breaking:** the verdict is a grade (`critical` … `low`, or `ok`, `finished` or `unknown` at 0)
   scored from the flags, and a finding lists every flag that fired. A counted advisory flags the
   package `vulnerable`, and the new flag `capped` marks a release that stops below the newest PHP
@@ -116,6 +125,10 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 
 ### Fixed
 
+- A report that the action cannot move to the `output` path, or a job summary file that it cannot
+  append to, fails the step with an error that names the path. The `exit-code` and `report`
+  outputs hold lockrot's exit code and the path first. In v1.1.0 a summary file that took no
+  append failed the step with a bash error and set no output.
 - The `exit-code` output and the README say that a code other than 0, 1 and 2 is a setup failure.
   Examples are 255 from a PHP fatal error and 137 from a killed process. The step fails on it, and its
   warning says so.
