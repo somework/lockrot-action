@@ -61,8 +61,8 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the
   `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else
   `lockrot-baseline.json`. The check follows symlinks and `..`, and compares a missing file in any
-  letter case. As lockrot does, it also refuses a file name that ends in a dot or a space or holds
-  a colon, because Windows reads such a name as another file. With `--explain` in `args`, such a path got the explanation copied over the file,
+  letter case. It also refuses a file name that ends in a dot or a space or holds a colon, as
+  lockrot does. Windows reads such a name as another file. With `--explain` in `args`, such a path got the explanation copied over the file,
   and `output: composer.lock` or the baseline path emptied that file before lockrot read it. The step
   also fails when PHP cannot read `extra.lockrot.baseline` for this check, or when the check cannot
   enter `working-directory`. It warned and went on. Action: set
