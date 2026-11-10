@@ -23,9 +23,10 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   3. In one commit, set `generate-baseline: true`, add the upload step of the
      [README baseline recipe](README.md#accept-what-you-have-fail-on-what-arrives), and put back
      a setting that you removed. The run on that commit writes a baseline-2 file, and
-     `known_since` starts again on that day. Until you commit the new file, any other run on that
-     commit exits 2 when a setting names the file. Without such a setting, that run reads no
-     baseline, so a `fail-on` gate can fail it with exit 1.
+     `known_since` starts again on that day. Until you commit the new file, a run on that commit
+     without `generate-baseline: true` exits 2 when a setting names the file. Without such a
+     setting, that run reads no baseline, so a `fail-on` gate can fail it with exit 1. A run with
+     `generate-baseline: true` ignores `fail-on`.
   4. Download the file from the run page, and commit it at the path where the step wrote it.
      Remove `generate-baseline: true` and the moved baseline-1 file.
 

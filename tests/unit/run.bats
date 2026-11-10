@@ -370,13 +370,17 @@ report_value() { output_value report | random_dirs; }
 @test "the port of an issuer URL counts only for http and https, as lockrot reads it" {
   unset LOCKROT_GITHUB_TOKEN GH_HOST
   export GITHUB_TOKEN=ghs_job INPUT_GITHUB_TOKEN=
-  for url in 'ssh://github.com:22' 'git://GitHub.com:9418/x' 'ssh://git@github.com:22/org'; do
+  # Ports that PHP's parse_url reads: lockrot drops them for these schemes.
+  for url in 'ssh://github.com:22' 'git://GitHub.com:9418/x' 'ssh://git@github.com:22/org' \
+    'ssh://github.com: 22' 'ssh://github.com:+22' 'ssh://github.com:2a' 'ssh://github.com:65535'; do
     export GITHUB_SERVER_URL=$url
     run_run
     [ "$status" -eq 0 ]
     [[ "$output" != *"LOCKROT_GITHUB_TOKEN"* ]] || { echo "url: $url"; false; }
   done
-  for url in 'https://github.com:8443' 'HTTP://github.com:80/' 'github.com:22'; do
+  # parse_url fails on a port above 65535 or longer than 5 characters, and lockrot then withholds the token.
+  for url in 'https://github.com:8443' 'HTTP://github.com:80/' 'github.com:22' \
+    'ssh://github.com:65536' 'ssh://github.com:00000000022' 'ssh://github.com:-1'; do
     export GITHUB_SERVER_URL=$url
     run_run
     [ "$status" -eq 0 ]
