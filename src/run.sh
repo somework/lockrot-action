@@ -229,16 +229,23 @@ main() {
 # It names the variable, not its value: a URL can carry userinfo.
 withheld_token_notice() {
   [ -n "${GITHUB_TOKEN:-}" ] && [ -z "${LOCKROT_GITHUB_TOKEN:-}" ] || return 0
-  local name authority reason token="GITHUB_TOKEN from the step's or job's env"
+  local name value scheme bare authority reason token="GITHUB_TOKEN from the step's or job's env"
   [ -z "$(trim "${INPUT_GITHUB_TOKEN:-}")" ] || token="GITHUB_TOKEN, and so the github-token input,"
   for name in GITHUB_SERVER_URL GH_HOST; do
-    [ -n "${!name:-}" ] || continue
-    # lockrot also reads the host of the authority alone, which ends at the first `/`, `?` or `#`.
-    authority=$(without_scheme "${!name}")
+    value=${!name:-}
+    [ -n "$value" ] || continue
+    # lockrot first reads the value without userinfo: its scheme, if one starts with a letter, and
+    # the text after the last `@`. It also reads the host of the whole value's authority, which ends
+    # at the first `/`, `?` or `#`.
+    scheme=
+    [[ ! "$value" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]] || scheme=${BASH_REMATCH[0]}
+    bare=$value
+    [[ "${value#"$scheme"}" != *@* ]] || bare="${scheme}${value##*@}"
+    authority=$(without_scheme "$value")
     authority=${authority%%[/?#]*}
-    if [ "$(url_host "${!name}")" != github.com ]; then
+    if [ "$(url_host "$bare")" != github.com ]; then
       reason="${name} names another host"
-    elif [ "$(url_host "$authority" "${!name}")" != github.com ] || [[ "$authority" == *\\* ]]; then
+    elif [ "$(url_host "$authority" "$value")" != github.com ] || [[ "$authority" == *\\* ]]; then
       reason="URL parsers read ${name} two ways"
     else
       continue
@@ -251,8 +258,9 @@ withheld_token_notice() {
 # The host of URL or bare host $1 in lower case: the text after the scheme and after the last `@`,
 # up to a path, a query, a fragment or a backslash. lockrot also cuts at the last `@`, because
 # userinfo can hold any character. An empty port is no port, as for PHP's parse_url. Other ports
-# stay only when value $2 (default $1) is an http(s) URL or holds no `://`, as lockrot keeps them:
-# an ssh:// or git:// port belongs to the transport, not to the host that lockrot sends tokens to.
+# stay only when $2 (default $1), the text that lockrot gives to parse_url for this reading, is an
+# http(s) URL or holds no `://`: lockrot then reads it as https://$2. An ssh:// or git:// port
+# belongs to the transport, not to the host that lockrot sends tokens to.
 url_host() {
   local rest
   rest=$(without_scheme "$1")
@@ -325,7 +333,8 @@ refuse_project_file() {
     reasons+=("which is the baseline file ${file}")
   done
   case "${report##*/}" in
-    *:*|*.|*' ') fail "the output input names ${report}, a file name that ends in a dot or a space, or holds a colon, which Windows reads as another file, as lockrot refuses it. The action writes no report there" ;;
+    # The input is trimmed, so the name cannot end in a space, the third name that lockrot refuses.
+    *:*|*.) fail "the output input names ${report}, a file name that ends in a dot or holds a colon, which Windows reads as another file. The action writes no report there" ;;
   esac
   while IFS= read -r candidate; do
     name=$(basename "$candidate" | tr '[:upper:]' '[:lower:]')
