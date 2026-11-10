@@ -229,7 +229,8 @@ main() {
 # It names the variable, not its value: a URL can carry userinfo.
 withheld_token_notice() {
   [ -n "${GITHUB_TOKEN:-}" ] && [ -z "${LOCKROT_GITHUB_TOKEN:-}" ] || return 0
-  local name authority reason
+  local name authority reason token="GITHUB_TOKEN from the step's or job's env"
+  [ -z "$(trim "${INPUT_GITHUB_TOKEN:-}")" ] || token="GITHUB_TOKEN, and so the github-token input,"
   for name in GITHUB_SERVER_URL GH_HOST; do
     [ -n "${!name:-}" ] || continue
     # lockrot also reads the host of the authority alone, which ends at the first `/`, `?` or `#`.
@@ -237,25 +238,41 @@ withheld_token_notice() {
     authority=${authority%%[/?#]*}
     if [ "$(url_host "${!name}")" != github.com ]; then
       reason="${name} names another host"
-    elif [ "$(url_host "$authority")" != github.com ] || [[ "$authority" == *\\* ]]; then
+    elif [ "$(url_host "$authority" "${!name}")" != github.com ] || [[ "$authority" == *\\* ]]; then
       reason="URL parsers read ${name} two ways"
     else
       continue
     fi
-    notice "lockrot does not send GITHUB_TOKEN, and so the github-token input, to github.com, because ${reason}. Unless Composer holds a github.com credential, set LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env to check repository activity on github.com"
+    notice "lockrot does not send ${token} to github.com, because ${reason}. Unless Composer holds a github.com credential, set LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env to check repository activity on github.com"
     return 0
   done
 }
 
-# The host of URL or bare host $1 in lower case, with its port: the text after the scheme and after
-# the last `@`, up to a path, a query, a fragment or a backslash. lockrot also cuts at the last `@`,
-# because userinfo can hold any character. An empty port is no port, as for PHP's parse_url.
+# The host of URL or bare host $1 in lower case: the text after the scheme and after the last `@`,
+# up to a path, a query, a fragment or a backslash. lockrot also cuts at the last `@`, because
+# userinfo can hold any character. An empty port is no port, as for PHP's parse_url. Other ports
+# stay only when value $2 (default $1) is an http(s) URL or holds no `://`, as lockrot keeps them:
+# an ssh:// or git:// port belongs to the transport, not to the host that lockrot sends tokens to.
 url_host() {
   local rest
   rest=$(without_scheme "$1")
   rest=${rest##*@}
   rest=${rest%%[/?#\\]*}
-  printf '%s\n' "${rest%:}" | tr '[:upper:]' '[:lower:]'
+  rest=${rest%:}
+  if [[ "${2:-$1}" == *://* ]] && ! [[ "${2:-$1}" =~ ^[Hh][Tt][Tt][Pp][Ss]?:// ]] \
+    && [[ "$rest" == *:* ]] && php_port "${rest##*:}"; then
+    rest=${rest%:*}
+  fi
+  printf '%s\n' "$rest" | tr '[:upper:]' '[:lower:]'
+}
+
+# Whether $1 is a port that PHP's parse_url accepts: at most 5 characters, which strtol reads as a
+# number from 0 to 65535. Any other port makes parse_url fail, and lockrot then withholds the token.
+php_port() {
+  [ "${#1}" -le 5 ] && [[ "$1" =~ ^[[:space:]]*([+-]?)([0-9]+) ]] || return 1
+  local value=$((10#${BASH_REMATCH[2]}))
+  [ "${BASH_REMATCH[1]}" != - ] || [ "$value" -eq 0 ] || return 1
+  [ "$value" -le 65535 ]
 }
 
 # $1 without a leading scheme and `://`, as PHP's parse_url reads a scheme. A `://` after text that
@@ -268,8 +285,9 @@ without_scheme() {
   fi
 }
 
-# Fails when report path $1 names a file that lockrot reads or that the baseline is, as lockrot
-# refuses for --output: a report taken from stdout has no other check.
+# Fails when report path $1 names a file that lockrot reads or that the baseline is, or has a file
+# name that Windows reads as another, as lockrot refuses for --output: a report taken from stdout
+# has no other check.
 # $2 is the working directory, and the rest are the args words. Composer reads COMPOSER relative to
 # the working directory, and every baseline is relative to the manifest's directory.
 refuse_project_file() {
@@ -306,6 +324,9 @@ refuse_project_file() {
     keys+=("$(path_key "$file")")
     reasons+=("which is the baseline file ${file}")
   done
+  case "${report##*/}" in
+    *:*|*.|*' ') fail "the output input names ${report}, a file name that ends in a dot or a space, or holds a colon, which Windows reads as another file, as lockrot refuses it. The action writes no report there" ;;
+  esac
   while IFS= read -r candidate; do
     name=$(basename "$candidate" | tr '[:upper:]' '[:lower:]')
     case "$name" in

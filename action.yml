@@ -61,8 +61,9 @@ inputs:
       it. Either way the path is the report output. The step fails before lockrot runs when the
       path names a composer.json or composer.lock, the manifest or lock that COMPOSER names, or a
       baseline: the baseline input, a --baseline in args, and extra.lockrot.baseline in the
-      manifest, else lockrot-baseline.json. Once that check passes, the action removes a file at
-      the path before lockrot runs. When lockrot then writes no report, for example on exit 2,
+      manifest, else lockrot-baseline.json. It also fails, as lockrot does, on a file name that
+      ends in a dot or a space or holds a colon, because Windows reads such a name as another
+      file. Once that check passes, the action removes a file at the path before lockrot runs. When lockrot then writes no report, for example on exit 2,
       the path holds no file. A directory at the path fails the step with "could not remove the
       earlier report at <path>". From lockrot 0.13.0 the action passes the path as --output for
       format github, table or markdown, and with generate-baseline set to true. Otherwise, for

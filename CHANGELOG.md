@@ -24,7 +24,8 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
      [README baseline recipe](README.md#accept-what-you-have-fail-on-what-arrives), and put back
      a setting that you removed. The run on that commit writes a baseline-2 file, and
      `known_since` starts again on that day. Until you commit the new file, any other run on that
-     commit exits 2.
+     commit exits 2 when a setting names the file. Without such a setting, that run reads no
+     baseline, so a `fail-on` gate can fail it with exit 1.
   4. Download the file from the run page, and commit it at the path where the step wrote it.
      Remove `generate-baseline: true` and the moved baseline-1 file.
 
@@ -60,7 +61,8 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the
   `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else
   `lockrot-baseline.json`. The check follows symlinks and `..`, and compares a missing file in any
-  letter case. With `--explain` in `args`, such a path got the explanation copied over the file,
+  letter case. As lockrot does, it also refuses a file name that ends in a dot or a space or holds
+  a colon, because Windows reads such a name as another file. With `--explain` in `args`, such a path got the explanation copied over the file,
   and `output: composer.lock` or the baseline path emptied that file before lockrot read it. The step
   also fails when PHP cannot read `extra.lockrot.baseline` for this check, or when the check cannot
   enter `working-directory`. It warned and went on. Action: set
@@ -117,8 +119,10 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   [CI page](https://lockrot.dev/ci/) for choosing them.
 - The `args` input says that `--explain` needs `format: table` or `format: json`, because the
   action always passes `--format`, and that `--explain` exits 2 with `generate-baseline: true`.
-  It also says that `--fail-on`, `--baseline` or `--target-php` in `args` exits 2 when the input
-  of the same name is set.
+- **Breaking:** a `--fail-on`, `--baseline` or `--target-php` in `args` exits 2 when the input of
+  the same name is set. The action passes that input as the same option, and lockrot 0.14 refuses
+  an option that is given twice. lockrot 0.13 used the value in `args`. The `args` input says so.
+  Action: set the value in the input or in `args`, not in both.
 - **Breaking:** a `--format` in `args` fails the step before lockrot runs, with an error that names
   the `format` input. It replaced the format that the action prints, names and rewrites the report
   by. Action: set the `format` input.
