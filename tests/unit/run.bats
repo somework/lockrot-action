@@ -353,6 +353,49 @@ report_value() { output_value report | random_dirs; }
   done
 }
 
+@test "the token notice names the input only when the token came from the input" {
+  unset LOCKROT_GITHUB_TOKEN GH_HOST
+  export GITHUB_SERVER_URL=https://ghes.example INPUT_GITHUB_TOKEN= GITHUB_TOKEN=ghs_job
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(grep -c "^::notice::lockrot-action: lockrot does not send GITHUB_TOKEN from the step's or job's env to github.com" <<< "$output")" -eq 1 ]
+  [[ "$output" != *"github-token input"* ]] || false
+
+  export INPUT_GITHUB_TOKEN=ghs_runner
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^::notice::lockrot-action: lockrot does not send GITHUB_TOKEN, and so the github-token input, to github.com' <<< "$output")" -eq 1 ]
+
+  # An input of spaces gives no token, so the job's token stays.
+  export INPUT_GITHUB_TOKEN='  ' GITHUB_TOKEN=ghs_job
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(grep -c "^::notice::lockrot-action: lockrot does not send GITHUB_TOKEN from the step's or job's env to github.com" <<< "$output")" -eq 1 ]
+}
+
+@test "the port of an issuer URL counts only for http and https, as lockrot reads it" {
+  unset LOCKROT_GITHUB_TOKEN GH_HOST
+  export GITHUB_TOKEN=ghs_job INPUT_GITHUB_TOKEN=
+  # Ports that PHP's parse_url reads: lockrot drops them for these schemes.
+  for url in 'ssh://github.com:22' 'git://GitHub.com:9418/x' 'ssh://git@github.com:22/org' \
+    'ssh://github.com: 22' 'ssh://github.com:+22' 'ssh://github.com:2a' 'ssh://github.com:65535'; do
+    export GITHUB_SERVER_URL=$url
+    run_run
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"LOCKROT_GITHUB_TOKEN"* ]] || { echo "url: $url"; false; }
+  done
+  # parse_url fails on a port above 65535 or longer than 5 characters, and lockrot then withholds the token.
+  # Without a scheme that starts with a letter, lockrot reads the text after the last @ as https://host:port.
+  for url in 'https://github.com:8443' 'HTTP://github.com:80/' 'github.com:22' \
+    'ssh://github.com:65536' 'ssh://github.com:00000000022' 'ssh://github.com:-1' \
+    '1ssh://u@github.com:22' 'github.com/x://y@github.com:22'; do
+    export GITHUB_SERVER_URL=$url
+    run_run
+    [ "$status" -eq 0 ]
+    [ "$(grep -c '^::notice::lockrot-action: .*GITHUB_SERVER_URL names another host' <<< "$output")" -eq 1 ] || { echo "url: $url"; false; }
+  done
+}
+
 @test "no token notice when the hosts name github.com, when LOCKROT_GITHUB_TOKEN is set, or when no token is set" {
   unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN
   export GITHUB_SERVER_URL=https://GitHub.com/ GH_HOST=github.com INPUT_GITHUB_TOKEN=ghs_runner
@@ -855,6 +898,22 @@ assert_output_refused() {
   [ "$(cat "$GITHUB_WORKSPACE/project/composer.lock")" = '{"packages": []}' ]
   [ "$(cat "$GITHUB_WORKSPACE/project/composer.json")" = '{}' ]
   [ ! -e "$GITHUB_WORKSPACE/other" ]
+}
+
+@test "an output whose file name Windows reads as another name is refused, as lockrot refuses it" {
+  export INPUT_FORMAT=json
+  assert_output_refused project/composer.lock. "$GITHUB_WORKSPACE/project/composer.lock."
+  assert_output_refused 'project/composer.lock::$DATA' "$GITHUB_WORKSPACE/project/composer.lock::\$DATA"
+  assert_output_refused 'project/lockrot-baseline.json .' "$GITHUB_WORKSPACE/project/lockrot-baseline.json ."
+  assert_output_refused build/ci:rot.json "$GITHUB_WORKSPACE/build/ci:rot.json"
+  [[ "$output" == *"a file name that ends in a dot or holds a colon"* ]] || false
+  [ "$(cat "$GITHUB_WORKSPACE/project/composer.lock")" = '{"packages": []}' ]
+
+  # Only the file name counts, as for lockrot.
+  export INPUT_OUTPUT='build:x/report.json'
+  run_run
+  [ "$status" -eq 0 ]
+  [ -s "$GITHUB_WORKSPACE/build:x/report.json" ]
 }
 
 @test "an output that is a symlink to composer.lock is refused" {
