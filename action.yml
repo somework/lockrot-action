@@ -132,8 +132,8 @@ inputs:
       github.com. So it withholds the token on GitHub Enterprise Server, GHE.com, Gitea or
       Forgejo, and on a github.com runner whose env sets GH_HOST to another host. There, set
       LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env instead, and the
-      action prints a notice that names it, in the step log and in the job summary, until you do.
-      A LOCKROT_GITHUB_TOKEN in that env wins over this input.
+      action prints a notice that names it, in the step log and in the job summary when the action
+      writes one, until you do. A LOCKROT_GITHUB_TOKEN in that env wins over this input.
     required: false
     default: ${{ github.token }}
   php-version:

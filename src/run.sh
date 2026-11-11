@@ -3,8 +3,9 @@
 # way the format wants (workflow commands for `github`), write the job summary and expose the exit
 # code as an output. Whatever lockrot's exit code, this script exits 0 once it has handled lockrot's
 # output, and the action's last step turns that code into the step result after the cache is saved.
-# It exits 1 when it fails: before lockrot runs, or after it when the annotation rewrite or the
-# report move fails. The cache save and the last step then do not run.
+# It exits non-zero when a command fails, before lockrot runs or after it, for example when the
+# annotation rewrite, the report move or an output write fails. The cache save and the last step
+# then do not run.
 set -euo pipefail
 # shellcheck source=src/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
@@ -219,7 +220,7 @@ main() {
     elif { [ "$summary_file" = "$report" ] && [ "$report_written" = true ]; } \
       || { [ "$summary_file" = "$summary_temp" ] && [ -f "$summary_file" ]; }; then
       append_summary "$summary_file" keep-notes
-      # The summary is where a reader looks, and the notice above is only in the log.
+      # withheld_token_notice prints to the log only, and a reader looks at the job summary.
       [ -z "$WITHHELD_TOKEN_TEXT" ] || printf '\n> lockrot-action: %s.\n' "$WITHHELD_TOKEN_TEXT" >> "$GITHUB_STEP_SUMMARY" \
         || error "could not append the token notice to the job summary ${GITHUB_STEP_SUMMARY}"
     else
@@ -229,10 +230,10 @@ main() {
 }
 
 # From lockrot 0.14.0, lockrot withholds GITHUB_TOKEN from github.com when GITHUB_SERVER_URL or
-# GH_HOST names another host or reads as two hosts, and says so only with -v. Its anonymous-cap note
-# appears only when it skips a package, so this notice names the variable that works there on every
-# such run, and main() repeats it in the job summary. It names the variable, not its value: a URL
-# can carry userinfo.
+# GH_HOST names another host or reads as two hosts. It says so in its anonymous-cap note, which
+# appears only when it skips a package, and otherwise only with -v. So this notice names the
+# variable that works there on every such run, and main() repeats it in the job summary when it
+# writes one. It names the variable, not its value: a URL can carry userinfo.
 WITHHELD_TOKEN_TEXT=""
 withheld_token_notice() {
   [ -n "${GITHUB_TOKEN:-}" ] && [ -z "${LOCKROT_GITHUB_TOKEN:-}" ] || return 0
