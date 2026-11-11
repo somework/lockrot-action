@@ -373,6 +373,57 @@ report_value() { output_value report | random_dirs; }
   [ "$(grep -c "^::notice::lockrot-action: lockrot does not send GITHUB_TOKEN from the step's or job's env to github.com" <<< "$output")" -eq 1 ]
 }
 
+@test "the job summary carries the token notice after lockrot's summary, for a summary through --output and for a markdown report" {
+  unset LOCKROT_GITHUB_TOKEN GH_HOST
+  export GITHUB_SERVER_URL=https://ghes.example INPUT_GITHUB_TOKEN= GITHUB_TOKEN=ghs_job
+  for format in github markdown; do
+    export INPUT_FORMAT=$format
+    : > "$GITHUB_STEP_SUMMARY"
+    run_run
+    [ "$status" -eq 0 ]
+    [ "$(sed -n 1p "$GITHUB_STEP_SUMMARY")" = "### lockrot: stub summary" ] || { echo "format: $format"; false; }
+    [ "$(tail -n 1 "$GITHUB_STEP_SUMMARY")" = "> lockrot-action: lockrot does not send GITHUB_TOKEN from the step's or job's env to github.com, because GITHUB_SERVER_URL names another host. Unless Composer holds a github.com credential, set LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env to check repository activity on github.com." ] || { echo "format: $format"; cat "$GITHUB_STEP_SUMMARY"; false; }
+    [ "$(grep -c '^> lockrot-action:' "$GITHUB_STEP_SUMMARY")" -eq 1 ] || { echo "format: $format"; false; }
+    [[ "$(cat "$GITHUB_STEP_SUMMARY")" != *"ghes.example"* ]] || false
+  done
+}
+
+@test "the job summary carries no token notice when lockrot sends the token, or when no summary is written" {
+  unset LOCKROT_GITHUB_TOKEN GH_HOST
+  export GITHUB_SERVER_URL=https://github.com INPUT_GITHUB_TOKEN=ghs_runner
+  run_run
+  [ "$status" -eq 0 ]
+  grep -q '### lockrot: stub summary' "$GITHUB_STEP_SUMMARY"
+  ! grep -q 'lockrot-action' "$GITHUB_STEP_SUMMARY"
+
+  export GITHUB_SERVER_URL=https://ghes.example INPUT_SUMMARY=false
+  : > "$GITHUB_STEP_SUMMARY"
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^::notice::lockrot-action: .*LOCKROT_GITHUB_TOKEN' <<< "$output")" -eq 1 ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+
+  # lockrot exits 2 and writes no summary.
+  export INPUT_SUMMARY=true PHP_STUB_EXIT=2
+  run_run
+  [ "$status" -eq 0 ]
+  [ "$(output_value exit-code)" = "2" ]
+  [ "$(grep -c '^::notice::lockrot-action: .*LOCKROT_GITHUB_TOKEN' <<< "$output")" -eq 1 ]
+  [ ! -s "$GITHUB_STEP_SUMMARY" ]
+}
+
+@test "a job summary that takes no token notice gives an error that names the file, and the step keeps lockrot's exit code" {
+  unset LOCKROT_GITHUB_TOKEN GH_HOST
+  export GITHUB_SERVER_URL=https://ghes.example INPUT_GITHUB_TOKEN= GITHUB_TOKEN=ghs_job PHP_STUB_EXIT=1
+  # A directory takes no append, also for root.
+  mkdir "$SCRATCH/summary-dir"
+  export GITHUB_STEP_SUMMARY="$SCRATCH/summary-dir"
+  run_run
+  [ "$status" -eq 0 ]
+  grep -qxF -- "::error::lockrot-action: could not append the token notice to the job summary $GITHUB_STEP_SUMMARY" <<< "$output"
+  [ "$(output_value exit-code)" = "1" ]
+}
+
 @test "the port of an issuer URL counts only for http and https, as lockrot reads it" {
   unset LOCKROT_GITHUB_TOKEN GH_HOST
   export GITHUB_TOKEN=ghs_job INPUT_GITHUB_TOKEN=
