@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Step 2 of the action: run the verified PHAR against the project, keep the report, print it the
 # way the format wants (workflow commands for `github`), write the job summary and expose the exit
-# code as an output. This script itself exits 0; the action's last step turns lockrot's exit code
-# into the step result, after the cache has been saved.
+# code as an output. Whatever lockrot's exit code, this script exits 0 once it has handled lockrot's
+# output, and the action's last step turns that code into the step result after the cache is saved.
+# It exits 1 when it fails: before lockrot runs, or after it when the annotation rewrite or the
+# report move fails. The cache save and the last step then do not run.
 set -euo pipefail
 # shellcheck source=src/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
@@ -217,6 +219,9 @@ main() {
     elif { [ "$summary_file" = "$report" ] && [ "$report_written" = true ]; } \
       || { [ "$summary_file" = "$summary_temp" ] && [ -f "$summary_file" ]; }; then
       append_summary "$summary_file" keep-notes
+      # The summary is where a reader looks, and the notice above is only in the log.
+      [ -z "$WITHHELD_TOKEN_TEXT" ] || printf '\n> lockrot-action: %s.\n' "$WITHHELD_TOKEN_TEXT" >> "$GITHUB_STEP_SUMMARY" \
+        || error "could not append the token notice to the job summary ${GITHUB_STEP_SUMMARY}"
     else
       log "job summary skipped: lockrot exited with ${code} and wrote no summary"
     fi
@@ -224,9 +229,11 @@ main() {
 }
 
 # From lockrot 0.14.0, lockrot withholds GITHUB_TOKEN from github.com when GITHUB_SERVER_URL or
-# GH_HOST names another host or reads as two hosts, and says so only with -v. Its anonymous-cap note then names
-# GITHUB_TOKEN, which the action already set, so this notice names the variable that works there.
-# It names the variable, not its value: a URL can carry userinfo.
+# GH_HOST names another host or reads as two hosts, and says so only with -v. Its anonymous-cap note
+# appears only when it skips a package, so this notice names the variable that works there on every
+# such run, and main() repeats it in the job summary. It names the variable, not its value: a URL
+# can carry userinfo.
+WITHHELD_TOKEN_TEXT=""
 withheld_token_notice() {
   [ -n "${GITHUB_TOKEN:-}" ] && [ -z "${LOCKROT_GITHUB_TOKEN:-}" ] || return 0
   local name value scheme bare authority reason token="GITHUB_TOKEN from the step's or job's env"
@@ -250,7 +257,8 @@ withheld_token_notice() {
     else
       continue
     fi
-    notice "lockrot does not send ${token} to github.com, because ${reason}. Unless Composer holds a github.com credential, set LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env to check repository activity on github.com"
+    WITHHELD_TOKEN_TEXT="lockrot does not send ${token} to github.com, because ${reason}. Unless Composer holds a github.com credential, set LOCKROT_GITHUB_TOKEN to a github.com token in the step's or job's env to check repository activity on github.com"
+    notice "$WITHHELD_TOKEN_TEXT"
     return 0
   done
 }
