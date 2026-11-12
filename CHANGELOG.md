@@ -1,8 +1,12 @@
 # Changelog
 
 All notable changes to this action are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the action follows
-[Semantic Versioning](https://semver.org/): `v1` always points at the newest `v1.x.y`.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `v1` always points at the newest
+`v1.x.y`. The `v1` line follows lockrot's minor releases, so a minor release of the action can
+carry **Breaking:** entries, lockrot's and the action's own. Each such entry has an Action line
+that gives the migration. A patch release carries no Breaking entry. To read each release
+before a workflow runs it, pin a full commit SHA, as the README
+[Versioning](README.md#versioning) section shows.
 
 ## [Unreleased]
 
@@ -51,13 +55,16 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   only when each of `GITHUB_SERVER_URL` and `GH_HOST` is unset, empty or names github.com. On
   GitHub Enterprise Server, GHE.com, Gitea or Forgejo, and on a github.com runner whose `env` sets
   `GH_HOST` to another host, the run is anonymous on github.com, unless Composer holds a
-  github.com credential. lockrot says so only with `-v`, so the action then prints one notice that
+  github.com credential. lockrot names the withheld `GITHUB_TOKEN` in its anonymous-cap note
+  when it skips a package, and otherwise only with `-v`. So the action then prints one notice that
   names `LOCKROT_GITHUB_TOKEN`. Action: set `LOCKROT_GITHUB_TOKEN` to a github.com token in
   the step's or job's `env`. The action does not pass the input as `LOCKROT_GITHUB_TOKEN`, because
   it cannot tell which host issued the token. The `github-token` texts and the README say so.
 - **Breaking:** without `output`, each action step writes its report in a directory of its own
   under `RUNNER_TEMP`, so a later step of the same job no longer replaces it. The old default path
-  was `RUNNER_TEMP/lockrot/report.<ext>`. Action: read the path from the `report` output.
+  was `RUNNER_TEMP/lockrot/report.<ext>`. Action: give the step an `id` and read the path in a
+  later step as `${{ steps.<id>.outputs.report }}`, or set `output` to a path of your own, such as
+  `output: lockrot.sarif`.
 - **Breaking:** the step fails before lockrot runs when `output` names a `composer.json` or
   `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the
   `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else
@@ -126,11 +133,13 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   Action: set the value in the input or in `args`, not in both.
 - **Breaking:** a `--format` in `args` fails the step before lockrot runs, with an error that names
   the `format` input. It replaced the format that the action prints, names and rewrites the report
-  by. Action: set the `format` input.
+  by. Action: remove the option from `args` and set the `format` input to its value, for example
+  `format: sarif` in place of `args: --format=sarif`.
 - **Breaking:** a `-d` or `--working-dir` in `args`, in any spelling, fails the step before lockrot
   runs, with an error that names the `working-directory` input. It moved the project away from the
   files that the action checks and annotates, so an `output` in the other directory could
-  overwrite its baseline. Action: set the `working-directory` input.
+  overwrite its baseline. Action: remove the option from `args` and set the `working-directory`
+  input to its directory, for example `working-directory: app` in place of `args: -d app`.
 
 ### Fixed
 

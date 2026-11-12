@@ -1,13 +1,18 @@
 name: Docker image
 
 # Publishes ghcr.io/somework/lockrot, tagged with the lockrot version pinned in lockrot.env: on
-# every release of this action, weekly (so base-image security patches reach the published tags
-# without a release), and by hand. The image is signed with cosign (keyless, GitHub OIDC) and
+# every final release of this action, weekly (so base-image security patches reach the published
+# tags without a release), and by hand. The image is signed with cosign (keyless, GitHub OIDC) and
 # carries a GitHub build-provenance attestation and an SBOM.
+#
+# Only main and a vMAJOR.MINOR.PATCH tag on main publish and sign, so the documented verifier
+# identity names those refs. A dispatch from another ref builds and tests without a push.
+# `released` fires for a final release and for a pre-release made final, never for a pre-release,
+# so latest and the version tags stay on the last final release.
 
 on:
   release:
-    types: [published]
+    types: [released]
   schedule:
     - cron: '17 4 * * 1'
   workflow_dispatch:
@@ -39,15 +44,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # publish-ref.sh reads whether a tag's commit is on main.
+          fetch-depth: 0
           persist-credentials: false
       - name: Read the pinned release
         id: pin
         env:
           PUSH: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+          # Written out, as in the verifier identity, so that the two cannot disagree.
+          DEFAULT_BRANCH: main
         run: |
           grep -E '^LOCKROT_(VERSION|SHA256)=' lockrot.env >> "$GITHUB_ENV"
           version=$(grep '^LOCKROT_VERSION=' lockrot.env | cut -d= -f2)
           echo "minor=${version%.*}" >> "$GITHUB_OUTPUT"
+          if [ "$PUSH" = true ] && ! reason=$(.github/scripts/publish-ref.sh "$GITHUB_REF"); then
+            echo "::warning::Built and tested without a push: ${reason}."
+            PUSH=false
+          fi
           echo "push=${PUSH}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
@@ -152,8 +165,9 @@ jobs:
             echo 'Verify (cosign 3.0 or newer):'
             echo '```bash'
             echo "cosign verify ${IMAGE}@${DIGEST} \\"
-            echo "  --certificate-identity-regexp '^https://github\\.com/somework/lockrot-action/\\.github/workflows/docker\\.yml@' \\"
+            echo "  --certificate-identity-regexp '^https://github\\.com/somework/lockrot-action/\\.github/workflows/docker\\.yml@refs/(heads/main|tags/v[0-9]+\\.[0-9]+\\.[0-9]+)$' \\"
             echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
-            echo "gh attestation verify oci://${IMAGE}@${DIGEST} --owner somework"
+            echo "gh attestation verify oci://${IMAGE}@${DIGEST} --owner somework \\"
+            echo "  --cert-identity-regex '^https://github\\.com/somework/lockrot-action/\\.github/workflows/docker\\.yml@refs/(heads/main|tags/v[0-9]+\\.[0-9]+\\.[0-9]+)$'"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

@@ -183,8 +183,10 @@ main() {
   set_output report "$report"
 
   [ "$format" != github ] || rewrite_annotation_paths "$stdout_file" "$work_dir" || fail "could not rewrite the annotation paths in ${stdout_file}"
-  case "$format" in
-    github|table|markdown) cat "$stdout_file" ;;
+  # A stdout that holds no report, such as the text of --help or --version, goes to the log under
+  # every format.
+  case "$stdout_report:$format" in
+    false:*|true:github|true:table|true:markdown) cat "$stdout_file" ;;
   esac
   # lockrot can exit before it writes anything: LOCKROT_DISABLE, --help, a usage error.
   local report_written=false

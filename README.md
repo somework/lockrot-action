@@ -64,7 +64,7 @@ other CI systems and local runs.
 | `fail-on` | *(lockrot's own default: `none`)* | Comma-separated values that fail the step, at most one of each kind. A grade: `critical`, `high`, `medium` or `low`, which fails on that grade or a higher one. A flag: `abandoned`, `silent`, `pinned`, `left-behind`, `old-promise`, `stale` or `capped`. A flag fails on itself and on each flag before it in this order. A `vulnerable` value: `vulnerable` (any severity), `vulnerable-medium`, `vulnerable-high` or `vulnerable-critical`, which fails on that severity or a higher one. `unchecked` fails on a finding whose check did not run. `none` stands alone. Example: `left-behind,vulnerable-high`. Empty defers to `LOCKROT_FAIL_ON`, then to `extra.lockrot.fail-on` in the manifest. See [choosing the values](https://lockrot.dev/ci/) |
 | `target-php` | *(`LOCKROT_TARGET_PHP`, then `extra.lockrot.target-php`, then `config.platform.php`, then the running PHP)* | PHP version the project runs on. It decides `old-promise`, which branch `left-behind` names, whether an advisory's fix runs on it, the PHP the move check solves at, and whether the lock installs on it. Set it explicitly |
 | `format` | `github` | `github` (annotations), `table`, `json`, `sarif`, `gitlab`, `markdown` or `html`. An empty value runs `github`. The action always passes `--format`, so `extra.lockrot.format` does not apply. A `--format` in `args` fails the step before lockrot runs |
-| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. The step fails before lockrot runs when the path names a `composer.json` or `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else `lockrot-baseline.json`. It also fails on a file name that ends in a dot or holds a colon, as lockrot 0.13.0 and newer do. Windows reads such a name as another file. Once that check passes, the action removes a file at the path before lockrot runs. When lockrot then writes no report, for example on exit 2, the path holds no file. A directory at the path fails the step with `could not remove the earlier report at <path>`. From lockrot 0.13.0 the action passes the path as `--output` for `format: github`, `table` or `markdown`, and with `generate-baseline: true`. Otherwise, for `format: json`, `sarif`, `gitlab` or `html`, lockrot renders the report once, to stdout. A `--generate-baseline`, a quiet option, `--help` or `--version` in `args` keeps the report off stdout, so it goes through `--output` too. The action moves stdout to the path after a run that exits 0 or 1, as with `--explain` in `args` or an older lockrot. An empty stdout leaves no file there, except from a lockrot older than 0.13.0 without `--explain` |
+| `output` | | Where to write the report, relative to the workspace or absolute. Empty keeps it in a directory of the step's own under `RUNNER_TEMP`, so a later step of the job does not replace it. Either way the path is the `report` output. The step fails before lockrot runs when the path names a `composer.json` or `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline: the `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else `lockrot-baseline.json`. It also fails on a file name that ends in a dot or holds a colon, as lockrot 0.13.0 and newer do. Windows reads such a name as another file. Once that check passes, the action removes a file at the path before lockrot runs. When lockrot then writes no report, for example on exit 2, the path holds no file. A directory at the path fails the step with `could not remove the earlier report at <path>`. From lockrot 0.13.0 the action passes the path as `--output` for `format: github`, `table` or `markdown`, and with `generate-baseline: true`. Otherwise, for `format: json`, `sarif`, `gitlab` or `html`, lockrot renders the report once, to stdout. A `--generate-baseline`, a quiet option, `--help` or `--version` in `args` keeps the report off stdout, so it goes through `--output` too, and the step log shows stdout, such as the help text, under every format. The action moves stdout to the path after a run that exits 0 or 1, as with `--explain` in `args` or an older lockrot. An empty stdout leaves no file there, except from a lockrot older than 0.13.0 without `--explain` |
 | `working-directory` | `.` | Directory where lockrot runs, relative to the workspace. It holds `composer.json` and `composer.lock`, unless `COMPOSER` names another manifest. `COMPOSER` is read relative to this directory |
 | `dev` | `false` | Also check `packages-dev` (`--dev`) |
 | `all` | `false` | Report every checked package, not only flagged ones (`--all`) |
@@ -372,12 +372,16 @@ action moves lockrot's stdout there. It never runs the project's own Composer pl
 - uses: somework/lockrot-action@<commit sha>   # v1.0.0
 ```
 
-The [update workflow](.github/workflows/update-lockrot.yml) proposes each new lockrot release as a
+The `v1` line does not follow Semantic Versioning for breaking changes: it follows lockrot's minor
+releases, so a minor release of the action can break a workflow. The
+[update workflow](.github/workflows/update-lockrot.yml) proposes each new lockrot release as a
 change of this action. A lockrot release that changes an exit code, an option or the report goes
-out as a minor release of the action. Its changelog marks such a change **Breaking**, as 1.1.0 did
-for lockrot 0.13.0. A lockrot release without such a change goes out as a patch release. The lockrot version an action release
-pins is in its `lockrot.env`, and the `version` input picks another release at any time. The
-[changelog](CHANGELOG.md) lists both.
+out as a minor release of the action. That minor release can also change the action's own inputs,
+outputs or defaults, as 1.2.0 does for `--format` and `-d` in `args` and for the default report
+path. The changelog marks each such change **Breaking:** and gives it an Action line with the
+migration, as 1.1.0 did for lockrot 0.13.0. A release without such a change goes out as a
+patch release. The lockrot version an action release pins is in its `lockrot.env`, and the
+`version` input picks another release at any time. The [changelog](CHANGELOG.md) lists both.
 
 ## Docker image
 
@@ -425,13 +429,20 @@ Sigstore bundle format, which needs cosign 3.0 or newer to verify:
 
 ```bash
 cosign verify ghcr.io/somework/lockrot:0.14.0 \
-  --certificate-identity-regexp '^https://github\.com/somework/lockrot-action/\.github/workflows/docker\.yml@' \
+  --certificate-identity-regexp '^https://github\.com/somework/lockrot-action/\.github/workflows/docker\.yml@refs/(heads/main|tags/v[0-9]+\.[0-9]+\.[0-9]+)$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-gh attestation verify oci://ghcr.io/somework/lockrot:0.14.0 --owner somework
+gh attestation verify oci://ghcr.io/somework/lockrot:0.14.0 --owner somework \
+  --cert-identity-regex '^https://github\.com/somework/lockrot-action/\.github/workflows/docker\.yml@refs/(heads/main|tags/v[0-9]+\.[0-9]+\.[0-9]+)$'
 ```
 
+The image workflow publishes and signs only from `main` and from a `vMAJOR.MINOR.PATCH` release
+tag whose commit is on `main`, so the identity names those refs. A run from another ref, or for a
+pre-release, builds and tests the image without a push. The identity proves the ref name only: a
+run for a tag uses the workflow file of that tag, so the `main` check holds only for a tag that a
+reviewed commit carries.
+
 Base-image fixes arrive as Dependabot digest bumps to the Dockerfile; the image is rebuilt on every
-release of this action and once a week, so a merged bump reaches the published tags within days. A
+final release of this action and once a week, so a merged bump reaches the published tags within days. A
 rebuild keeps the tag and changes the digest, which is why the signature and attestation are per
 digest.
 
