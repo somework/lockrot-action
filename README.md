@@ -378,8 +378,8 @@ releases, so a minor release of the action can break a workflow. The
 change of this action. A lockrot release that changes an exit code, an option or the report goes
 out as a minor release of the action. That minor release can also change the action's own inputs,
 outputs or defaults, as 1.2.0 does for `--format` and `-d` in `args` and for the default report
-path. The changelog marks each such change **Breaking:** and ends it with an Action line that gives
-the migration, as 1.1.0 did for lockrot 0.13.0. A release without such a change goes out as a
+path. The changelog marks each such change **Breaking:** and gives it an Action line with the
+migration, as 1.1.0 did for lockrot 0.13.0. A release without such a change goes out as a
 patch release. The lockrot version an action release pins is in its `lockrot.env`, and the
 `version` input picks another release at any time. The [changelog](CHANGELOG.md) lists both.
 
@@ -437,7 +437,9 @@ gh attestation verify oci://ghcr.io/somework/lockrot:0.14.0 --owner somework \
 
 The image workflow publishes and signs only from `main` and from a `vMAJOR.MINOR.PATCH` release
 tag whose commit is on `main`, so the identity names those refs. A run from another ref, or for a
-pre-release, builds and tests the image without a push.
+pre-release, builds and tests the image without a push. The identity proves the ref name only: a
+run for a tag uses the workflow file of that tag, so the `main` check holds only for a tag that a
+reviewed commit carries.
 
 Base-image fixes arrive as Dependabot digest bumps to the Dockerfile; the image is rebuilt on every
 final release of this action and once a week, so a merged bump reaches the published tags within days. A

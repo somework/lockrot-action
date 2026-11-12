@@ -4,7 +4,8 @@
 # `side` with one commit off main, tagged v1.2.1.
 setup() {
   SCRATCH="$(mktemp -d)"
-  export SCRATCH DEFAULT_BRANCH=main
+  # A signing or hook setting of the machine must not reach these commits and tags.
+  export SCRATCH DEFAULT_BRANCH=main GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
   SCRIPT="$BATS_TEST_DIRNAME/../../.github/scripts/publish-ref.sh"
   local origin="$SCRATCH/origin"
   git init -q -b main "$origin"
@@ -60,4 +61,11 @@ teardown() { rm -rf "$SCRATCH"; }
   run "$SCRIPT" refs/tags/v1.2.0
   [ "$status" -eq 1 ]
   [ "$output" = "the commit of refs/tags/v1.2.0 is not on main" ]
+}
+
+@test "a run without DEFAULT_BRANCH may not publish, and says why" {
+  unset DEFAULT_BRANCH
+  run "$SCRIPT" refs/heads/main
+  [ "$status" -eq 1 ]
+  [ "$output" = "DEFAULT_BRANCH is not set" ]
 }

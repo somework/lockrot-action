@@ -56,4 +56,4 @@ docker run --rm -v "$PWD/tests/fixtures/project:/app:ro" lockrot --target-php=8.
 2. `gh release create v1.x.y --generate-notes` — the release workflow moves `v1`, and the image
    workflow publishes `ghcr.io/somework/lockrot` for the lockrot version pinned in `lockrot.env`.
    Neither publishes from a tag whose commit is not on `main`, and the image workflow publishes
-   nothing for a pre-release.
+   nothing for a pre-release. It publishes when the pre-release is made final.

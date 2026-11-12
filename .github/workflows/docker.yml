@@ -1,17 +1,18 @@
 name: Docker image
 
 # Publishes ghcr.io/somework/lockrot, tagged with the lockrot version pinned in lockrot.env: on
-# every release of this action, weekly (so base-image security patches reach the published tags
-# without a release), and by hand. The image is signed with cosign (keyless, GitHub OIDC) and
+# every final release of this action, weekly (so base-image security patches reach the published
+# tags without a release), and by hand. The image is signed with cosign (keyless, GitHub OIDC) and
 # carries a GitHub build-provenance attestation and an SBOM.
 #
 # Only main and a vMAJOR.MINOR.PATCH tag on main publish and sign, so the documented verifier
-# identity names those refs. A dispatch from another ref builds and tests without a push. A
-# pre-release pushes nothing: latest and the version tags stay on the last release.
+# identity names those refs. A dispatch from another ref builds and tests without a push.
+# `released` fires for a final release and for a pre-release made final, never for a pre-release,
+# so latest and the version tags stay on the last final release.
 
 on:
   release:
-    types: [published]
+    types: [released]
   schedule:
     - cron: '17 4 * * 1'
   workflow_dispatch:
@@ -50,16 +51,13 @@ jobs:
         id: pin
         env:
           PUSH: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
-          PRERELEASE: ${{ github.event_name == 'release' && github.event.release.prerelease }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # Written out, as in the verifier identity, so that the two cannot disagree.
+          DEFAULT_BRANCH: main
         run: |
           grep -E '^LOCKROT_(VERSION|SHA256)=' lockrot.env >> "$GITHUB_ENV"
           version=$(grep '^LOCKROT_VERSION=' lockrot.env | cut -d= -f2)
           echo "minor=${version%.*}" >> "$GITHUB_OUTPUT"
-          if [ "$PUSH" = true ] && [ "$PRERELEASE" = true ]; then
-            echo "::notice::A pre-release publishes no image: latest and the version tags stay on the last release."
-            PUSH=false
-          elif [ "$PUSH" = true ] && ! reason=$(.github/scripts/publish-ref.sh "$GITHUB_REF"); then
+          if [ "$PUSH" = true ] && ! reason=$(.github/scripts/publish-ref.sh "$GITHUB_REF"); then
             echo "::warning::Built and tested without a push: ${reason}."
             PUSH=false
           fi

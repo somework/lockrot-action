@@ -6,7 +6,11 @@
 # A write-access dispatch or release must not publish code that the default branch's review never saw.
 set -u
 ref=${1:?usage: publish-ref.sh <git ref>}
-branch=${DEFAULT_BRANCH:?DEFAULT_BRANCH is not set}
+branch=${DEFAULT_BRANCH:-}
+if [ -z "$branch" ]; then
+  echo "DEFAULT_BRANCH is not set"
+  exit 1
+fi
 
 [ "$ref" != "refs/heads/${branch}" ] || exit 0
 if [[ ! "$ref" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then

@@ -3,8 +3,8 @@
 All notable changes to this action are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `v1` always points at the newest
 `v1.x.y`. The `v1` line follows lockrot's minor releases, so a minor release of the action can
-carry **Breaking:** entries, lockrot's and the action's own. Each such entry ends with an Action
-line that gives the migration. A patch release carries no Breaking entry. To read each release
+carry **Breaking:** entries, lockrot's and the action's own. Each such entry has an Action line
+that gives the migration. A patch release carries no Breaking entry. To read each release
 before a workflow runs it, pin a full commit SHA, as the README
 [Versioning](README.md#versioning) section shows.
 
