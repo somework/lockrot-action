@@ -24,7 +24,7 @@ jobs:
         with:
           persist-credentials: false
       - name: shellcheck
-        run: shellcheck -x src/*.sh tests/unit/stubs/* tests/unit/helpers.bash
+        run: shellcheck -x src/*.sh .github/scripts/*.sh tests/unit/stubs/* tests/unit/helpers.bash
       - name: actionlint
         env:
           VERSION: 1.7.12
