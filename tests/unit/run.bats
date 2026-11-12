@@ -212,6 +212,23 @@ report_value() { output_value report | random_dirs; }
   done
 }
 
+@test "help or version text from args reaches the log under every document format" {
+  mkdir -p "$SCRATCH/bin"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --help) echo "Usage: lockrot [options]"; exit 0;; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH"
+  for format in json sarif gitlab html; do
+    for words in --help --version; do
+      export INPUT_FORMAT=$format INPUT_ARGS=$words
+      run_run
+      [ "$status" -eq 0 ]
+      expected='lockrot 9.9.9'
+      [ "$words" != --help ] || expected='Usage: lockrot [options]'
+      grep -qxF -- "$expected" <<< "$output" || { echo "format: $format, args: $words"; false; }
+    done
+  done
+}
+
 @test "below lockrot 0.14.0 no token notice is printed, since that lockrot sends GITHUB_TOKEN from any host" {
   export LOCKROT_VERSION=0.13.0 PHP_STUB_VERSION=0.13.0 GITHUB_SERVER_URL=https://ghes.example INPUT_GITHUB_TOKEN=ghs_runner
   unset GITHUB_TOKEN LOCKROT_GITHUB_TOKEN GH_HOST

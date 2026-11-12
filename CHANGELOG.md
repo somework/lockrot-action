@@ -102,7 +102,8 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   `markdown` through `--output=<format>:<path>`. It no longer uses a shell redirection. Under
   `generate-baseline`, every format goes through `--output`, and the report file holds the run's
   report. So does a run with `--generate-baseline`, a quiet option, `--help` or `--version` in
-  `args`, which keeps the report off stdout. For `format: json`, `sarif`, `gitlab` or `html`, lockrot renders the report once, to
+  `args`, which keeps the report off stdout. The step log then shows stdout, such as the text of
+  `--help` or `--version`, under every format. For `format: json`, `sarif`, `gitlab` or `html`, lockrot renders the report once, to
   stdout. The action moves stdout to the path after a run that exits 0 or 1, as with `--explain`
   in `args` or an older lockrot. PHP then writes its own messages, such as a startup warning, to stderr, so they cannot reach the
   document. lockrot refuses `--output` with `--explain`.
