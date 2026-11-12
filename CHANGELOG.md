@@ -51,7 +51,8 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   only when each of `GITHUB_SERVER_URL` and `GH_HOST` is unset, empty or names github.com. On
   GitHub Enterprise Server, GHE.com, Gitea or Forgejo, and on a github.com runner whose `env` sets
   `GH_HOST` to another host, the run is anonymous on github.com, unless Composer holds a
-  github.com credential. lockrot says so only with `-v`, so the action then prints one notice that
+  github.com credential. lockrot names the withheld `GITHUB_TOKEN` in its anonymous-cap note
+  when it skips a package, and otherwise only with `-v`. So the action then prints one notice that
   names `LOCKROT_GITHUB_TOKEN`. Action: set `LOCKROT_GITHUB_TOKEN` to a github.com token in
   the step's or job's `env`. The action does not pass the input as `LOCKROT_GITHUB_TOKEN`, because
   it cannot tell which host issued the token. The `github-token` texts and the README say so.
