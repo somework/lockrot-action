@@ -1,8 +1,12 @@
 # Changelog
 
 All notable changes to this action are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the action follows
-[Semantic Versioning](https://semver.org/): `v1` always points at the newest `v1.x.y`.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `v1` always points at the newest
+`v1.x.y`. The `v1` line follows lockrot's minor releases, so a minor release of the action can
+carry **Breaking:** entries, lockrot's and the action's own. Each such entry ends with an Action
+line that gives the migration. A patch release carries no Breaking entry. To read each release
+before a workflow runs it, pin a full commit SHA, as the README
+[Versioning](README.md#versioning) section shows.
 
 ## [Unreleased]
 
@@ -58,7 +62,9 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   it cannot tell which host issued the token. The `github-token` texts and the README say so.
 - **Breaking:** without `output`, each action step writes its report in a directory of its own
   under `RUNNER_TEMP`, so a later step of the same job no longer replaces it. The old default path
-  was `RUNNER_TEMP/lockrot/report.<ext>`. Action: read the path from the `report` output.
+  was `RUNNER_TEMP/lockrot/report.<ext>`. Action: give the step an `id` and read the path in a
+  later step as `${{ steps.<id>.outputs.report }}`, or set `output` to a path of your own, such as
+  `output: lockrot.sarif`.
 - **Breaking:** the step fails before lockrot runs when `output` names a `composer.json` or
   `composer.lock`, the manifest or lock that `COMPOSER` names, or a baseline. The baselines are the
   `baseline` input, a `--baseline` in `args`, and `extra.lockrot.baseline` in the manifest, else
@@ -103,8 +109,7 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   `markdown` through `--output=<format>:<path>`. It no longer uses a shell redirection. Under
   `generate-baseline`, every format goes through `--output`, and the report file holds the run's
   report. So does a run with `--generate-baseline`, a quiet option, `--help` or `--version` in
-  `args`, which keeps the report off stdout. The step log then shows stdout, such as the text of
-  `--help` or `--version`, under every format. For `format: json`, `sarif`, `gitlab` or `html`, lockrot renders the report once, to
+  `args`, which keeps the report off stdout. For `format: json`, `sarif`, `gitlab` or `html`, lockrot renders the report once, to
   stdout. The action moves stdout to the path after a run that exits 0 or 1, as with `--explain`
   in `args` or an older lockrot. PHP then writes its own messages, such as a startup warning, to stderr, so they cannot reach the
   document. lockrot refuses `--output` with `--explain`.
@@ -128,11 +133,13 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
   Action: set the value in the input or in `args`, not in both.
 - **Breaking:** a `--format` in `args` fails the step before lockrot runs, with an error that names
   the `format` input. It replaced the format that the action prints, names and rewrites the report
-  by. Action: set the `format` input.
+  by. Action: remove the option from `args` and set the `format` input to its value, for example
+  `format: sarif` in place of `args: --format=sarif`.
 - **Breaking:** a `-d` or `--working-dir` in `args`, in any spelling, fails the step before lockrot
   runs, with an error that names the `working-directory` input. It moved the project away from the
   files that the action checks and annotates, so an `output` in the other directory could
-  overwrite its baseline. Action: set the `working-directory` input.
+  overwrite its baseline. Action: remove the option from `args` and set the `working-directory`
+  input to its directory, for example `working-directory: app` in place of `args: -d app`.
 
 ### Fixed
 

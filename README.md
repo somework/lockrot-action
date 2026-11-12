@@ -372,12 +372,16 @@ action moves lockrot's stdout there. It never runs the project's own Composer pl
 - uses: somework/lockrot-action@<commit sha>   # v1.0.0
 ```
 
-The [update workflow](.github/workflows/update-lockrot.yml) proposes each new lockrot release as a
+The `v1` line does not follow Semantic Versioning for breaking changes: it follows lockrot's minor
+releases, so a minor release of the action can break a workflow. The
+[update workflow](.github/workflows/update-lockrot.yml) proposes each new lockrot release as a
 change of this action. A lockrot release that changes an exit code, an option or the report goes
-out as a minor release of the action. Its changelog marks such a change **Breaking**, as 1.1.0 did
-for lockrot 0.13.0. A lockrot release without such a change goes out as a patch release. The lockrot version an action release
-pins is in its `lockrot.env`, and the `version` input picks another release at any time. The
-[changelog](CHANGELOG.md) lists both.
+out as a minor release of the action. That minor release can also change the action's own inputs,
+outputs or defaults, as 1.2.0 does for `--format` and `-d` in `args` and for the default report
+path. The changelog marks each such change **Breaking:** and ends it with an Action line that gives
+the migration, as 1.1.0 did for lockrot 0.13.0. A release without such a change goes out as a
+patch release. The lockrot version an action release pins is in its `lockrot.env`, and the
+`version` input picks another release at any time. The [changelog](CHANGELOG.md) lists both.
 
 ## Docker image
 
@@ -425,13 +429,18 @@ Sigstore bundle format, which needs cosign 3.0 or newer to verify:
 
 ```bash
 cosign verify ghcr.io/somework/lockrot:0.14.0 \
-  --certificate-identity-regexp '^https://github\.com/somework/lockrot-action/\.github/workflows/docker\.yml@' \
+  --certificate-identity-regexp '^https://github\.com/somework/lockrot-action/\.github/workflows/docker\.yml@refs/(heads/main|tags/v[0-9]+\.[0-9]+\.[0-9]+)$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-gh attestation verify oci://ghcr.io/somework/lockrot:0.14.0 --owner somework
+gh attestation verify oci://ghcr.io/somework/lockrot:0.14.0 --owner somework \
+  --cert-identity-regex '^https://github\.com/somework/lockrot-action/\.github/workflows/docker\.yml@refs/(heads/main|tags/v[0-9]+\.[0-9]+\.[0-9]+)$'
 ```
 
+The image workflow publishes and signs only from `main` and from a `vMAJOR.MINOR.PATCH` release
+tag whose commit is on `main`, so the identity names those refs. A run from another ref, or for a
+pre-release, builds and tests the image without a push.
+
 Base-image fixes arrive as Dependabot digest bumps to the Dockerfile; the image is rebuilt on every
-release of this action and once a week, so a merged bump reaches the published tags within days. A
+final release of this action and once a week, so a merged bump reaches the published tags within days. A
 rebuild keeps the tag and changes the digest, which is why the signature and attestation are per
 digest.
 
