@@ -536,7 +536,21 @@ report_value() { output_value report | random_dirs; }
 exit-code=0"
   run_run
   [ "$status" -eq 1 ]
-  [[ "$output" == *"the OUTPUT input must not contain a line break"* ]]
+  [[ "$output" == *"the output input must not contain a line break"* ]]
+  [ ! -s "$PHP_STUB_LOG" ]
+}
+
+@test "a line break in args or github-token names the input as the workflow writes it" {
+  export INPUT_ARGS="--dev
+--all"
+  run_run
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"the args input must not contain a line break"* ]]
+  [ ! -s "$PHP_STUB_LOG" ]
+  export INPUT_ARGS= INPUT_GITHUB_TOKEN="$(printf 'token\n.')"
+  run_run
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"the github-token input must not contain a line break"* ]]
   [ ! -s "$PHP_STUB_LOG" ]
 }
 

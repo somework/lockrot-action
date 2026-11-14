@@ -227,6 +227,15 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 - The README FAQ no longer states a size of the PHAR.
 - The `ghcr.io/somework/lockrot` image carries brotli-libs 1.2.1-r0 and libcurl 8.23.0-r0, which
   fix CVE-2026-111497 and CVE-2026-92392. The php base image digest is updated as well.
+- A line break in an input gives an error that names the input as a workflow writes it, such as
+  `the github-token input must not contain a line break`. The error named the variable form, such
+  as `GITHUB_TOKEN`, which is also an environment variable of the job. The `args` texts say that a
+  line break fails the step.
+- The README Docker section says to pass `-e GH_HOST` beside `-e GITHUB_SERVER_URL` and
+  `-e GITHUB_TOKEN`. `docker run` passes only the variables that `-e` names, so without it
+  lockrot sent a token of the host that `GH_HOST` names to github.com.
+- The `args`, `fail-on` and `exit-code` texts say that `fail-on` and `strict-network` do not apply
+  to `--explain` in `args`. From lockrot 0.13.0, such a run exits 0 or 2 only.
 
 ## [1.1.0] - 2026-10-02
 
