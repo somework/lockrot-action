@@ -119,9 +119,10 @@ inputs:
       lockrot runs: set the format input instead. A -d or --working-dir here fails the step before
       lockrot runs too: set the working-directory input instead. The action always passes --format, so
       --explain=vendor/package needs format table or json and exits 2 with any other format. It
-      also exits 2 with generate-baseline set to true. --explain exits 0 or 2 only, so fail-on and
-      strict-network do not apply. lockrot takes --fail-on, --baseline and
-      --target-php once only, so one of them here exits 2 when the input of the same name is set.
+      also exits 2 with generate-baseline set to true. fail-on and strict-network do not apply to
+      --explain. From lockrot 0.13.0, --explain exits 0 or 2 only. lockrot takes --fail-on,
+      --baseline and --target-php once only, so one of them here exits 2 when the input of the
+      same name is set.
     required: false
     default: ''
   github-token:
@@ -171,9 +172,9 @@ outputs:
     description: >-
       lockrot exit code. 0: no finding failed fail-on, and strict-network did not trip. 1: a
       finding failed fail-on, or strict-network tripped. 2: lockrot could not run or finish, for
-      an input, configuration or usage error, or a file that it could not write. With --explain in
-      args, lockrot gives 0 or 2 only, because fail-on and strict-network do not apply. Any other code
-      is a setup failure, and the step fails on it: PHP stopped lockrot, for example 255 on a
+      an input, configuration or usage error, or a file that it could not write. fail-on and
+      strict-network do not apply to --explain in args, so from lockrot 0.13.0 such a run gives
+      0 or 2 only. Any other code is a setup failure, and the step fails on it: PHP stopped lockrot, for example 255 on a
       fatal error such as an exhausted memory_limit, or the process was killed, for example 137
       on an out-of-memory kill. Empty when the action fails before it sets the output. Examples
       are a failed download or sha256 check, an unknown format, a line break in an input and a

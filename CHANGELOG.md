@@ -234,8 +234,8 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 - The README Docker section says to pass `-e GH_HOST` beside `-e GITHUB_SERVER_URL` and
   `-e GITHUB_TOKEN`. `docker run` passes only the variables that `-e` names, so without it
   lockrot sent a token of the host that `GH_HOST` names to github.com.
-- The `args`, `fail-on` and `exit-code` texts say that `--explain` in `args` exits 0 or 2 only,
-  so `fail-on` and `strict-network` do not apply to that run.
+- The `args`, `fail-on` and `exit-code` texts say that `fail-on` and `strict-network` do not apply
+  to `--explain` in `args`. From lockrot 0.13.0, such a run exits 0 or 2 only.
 
 ## [1.1.0] - 2026-10-02
 
