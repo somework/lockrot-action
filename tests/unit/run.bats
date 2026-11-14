@@ -546,6 +546,7 @@ exit-code=0"
   run_run
   [ "$status" -eq 1 ]
   [[ "$output" == *"the args input must not contain a line break"* ]]
+  [ ! -s "$PHP_STUB_LOG" ]
   export INPUT_ARGS= INPUT_GITHUB_TOKEN="$(printf 'token\n.')"
   run_run
   [ "$status" -eq 1 ]

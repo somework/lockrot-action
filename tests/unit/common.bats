@@ -200,12 +200,14 @@ lines"
 }
 
 @test "input_name gives the action.yml name of every INPUT_ variable that action.yml sets" {
-  local line variable input
+  local line variable input checked=0
   while IFS= read -r line; do
     variable=$(printf '%s\n' "$line" | sed -n 's/^ *\(INPUT_[A-Z_]*\): .*/\1/p')
     input=$(printf '%s\n' "$line" | sed -n 's/.*inputs\.\([a-z-]*\) }}.*/\1/p')
     [ "$(input_name "$variable")" = "$input" ]
+    checked=$((checked + 1))
   done < <(grep -E '^ *INPUT_[A-Z_]*: ' "$BATS_TEST_DIRNAME/../../action.yml")
+  [ "$checked" -gt 0 ]
 }
 
 @test "reject_absolute_path refuses absolute and drive-letter paths" {

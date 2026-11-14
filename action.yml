@@ -119,7 +119,7 @@ inputs:
       lockrot runs: set the format input instead. A -d or --working-dir here fails the step before
       lockrot runs too: set the working-directory input instead. The action always passes --format, so
       --explain=vendor/package needs format table or json and exits 2 with any other format. It
-      also exits 2 with generate-baseline set to true. Otherwise --explain exits 0, and fail-on and
+      also exits 2 with generate-baseline set to true. --explain exits 0 or 2 only, so fail-on and
       strict-network do not apply. lockrot takes --fail-on, --baseline and
       --target-php once only, so one of them here exits 2 when the input of the same name is set.
     required: false
