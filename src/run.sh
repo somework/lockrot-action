@@ -176,7 +176,7 @@ main() {
   # The command name first: Symfony reads the first bare word before it as a command name, so an
   # option value after a space would run another command, or none, with exit 1.
   local code=0
-  (cd "$work_dir" && php ${php_flags[@]+"${php_flags[@]}"} "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
+  (cd -- "$work_dir" && php ${php_flags[@]+"${php_flags[@]}"} "$phar" lockrot "${args[@]}") > "$stdout_file" || code=$?
   # Set before the rewrite, the move and the summary, so a later job step that reads them gets
   # lockrot's code when one of these fails.
   set_output exit-code "$code"
@@ -311,7 +311,7 @@ without_scheme() {
 # the working directory, and every baseline is relative to the manifest's directory.
 refuse_project_file() {
   local report=$1 project manifest lock base candidate name file key i
-  project=$(cd -P "$2" 2> /dev/null && pwd -P) \
+  project=$(cd -P -- "$2" 2> /dev/null && pwd -P) \
     || fail "could not enter the working directory $2, so the output check cannot tell whether output names a project file"
   shift 2
   manifest=$(native_path "$(trim "${COMPOSER:-}")")
@@ -526,7 +526,7 @@ write_summary() {
   local -a args=(--format=markdown --offline ${COMMON_ARGS[@]+"${COMMON_ARGS[@]}"})
   local summary code=0
   summary="${temp_dir}/summary.md"
-  (cd "$work_dir" && php "$phar" lockrot "${args[@]}") > "$summary" 2> "$summary.err" || code=$?
+  (cd -- "$work_dir" && php "$phar" lockrot "${args[@]}") > "$summary" 2> "$summary.err" || code=$?
   if [ "$code" -le 1 ]; then
     append_summary "$summary"
   else

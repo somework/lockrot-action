@@ -53,7 +53,11 @@ docker run --rm -v "$PWD/tests/fixtures/project:/app:ro" lockrot --target-php=8.
 ## Releasing
 
 1. Merge to `main` with `CHANGELOG.md` updated, the **Breaking:** entries of a lockrot bump included.
-2. `gh release create v1.x.y --generate-notes` — the release workflow moves `v1`, and the image
-   workflow publishes `ghcr.io/somework/lockrot` for the lockrot version pinned in `lockrot.env`.
-   Neither publishes from a tag whose commit is not on `main`, and the image workflow publishes
-   nothing for a pre-release. It publishes when the pre-release is made final.
+2. Copy the whole `CHANGELOG.md` section of the release into a body file. Keep its introduction,
+   its **Breaking:** entries and their Action lines. Then run
+   `gh release create v1.x.y --repo somework/lockrot-action --notes-file <body file>` on that
+   `main`. Do not use `--generate-notes` alone: it lists pull requests and leaves out the
+   migration lines. The release workflow moves `v1`, and the image workflow publishes
+   `ghcr.io/somework/lockrot` for the lockrot version pinned in `lockrot.env`. Neither publishes
+   from a tag whose commit is not on `main`, and the image workflow publishes nothing for a
+   pre-release. It publishes when the pre-release is made final.
