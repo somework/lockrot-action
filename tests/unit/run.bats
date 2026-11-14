@@ -662,6 +662,71 @@ exit-code=0"
   [ -z "$(output_value exit-code)" ]
 }
 
+@test "a working directory whose name starts with - is entered as a directory, not read as a cd option" {
+  # Arrange
+  mkdir -p "$GITHUB_WORKSPACE/-x"
+  printf '{}\n' > "$GITHUB_WORKSPACE/-x/composer.json"
+  printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/-x/composer.lock"
+  export INPUT_WORKING_DIRECTORY=-x
+
+  # Act
+  run_run
+
+  # Assert: the exit-code output is the stub lockrot's 0, not the non-zero code of a failed cd.
+  [ "$status" -eq 0 ]
+  [ "$(output_value exit-code)" = "0" ]
+  [[ "$output" == *"::warning file=-x/composer.lock,line=12,"* ]] || false
+}
+
+@test "a working directory named - is entered as that directory, not as the previous one" {
+  # Arrange: a lockrot that writes the name of the directory it runs in.
+  export INPUT_FORMAT=markdown INPUT_WORKING_DIRECTORY=-
+  mkdir -p "$GITHUB_WORKSPACE/-" "$SCRATCH/bin"
+  printf '{}\n' > "$GITHUB_WORKSPACE/-/composer.json"
+  printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/-/composer.lock"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=*:*) printf "report of %%s\\n" "${PWD##*/}" > "${a#--output=*:}";; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH" OLDPWD="$GITHUB_WORKSPACE/project"
+
+  # Act
+  run_run
+
+  # Assert
+  [ "$status" -eq 0 ]
+  [ "$(cat "$(output_value report)")" = "report of -" ]
+}
+
+@test "the output check enters a working directory whose name starts with -" {
+  # Arrange
+  mkdir -p "$GITHUB_WORKSPACE/-x"
+  printf '{}\n' > "$GITHUB_WORKSPACE/-x/composer.json"
+  printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/-x/composer.lock"
+  export INPUT_WORKING_DIRECTORY=-x INPUT_OUTPUT=build/lockrot.txt
+
+  # Act
+  run_run
+
+  # Assert
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"could not enter the working directory"* ]] || false
+  [ "$(output_value exit-code)" = "0" ]
+}
+
+@test "before lockrot 0.13.0 the summary run enters a working directory whose name starts with -" {
+  # Arrange
+  mkdir -p "$GITHUB_WORKSPACE/-x"
+  printf '{}\n' > "$GITHUB_WORKSPACE/-x/composer.json"
+  printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/-x/composer.lock"
+  export INPUT_WORKING_DIRECTORY=-x LOCKROT_VERSION=0.12.0 PHP_STUB_VERSION=0.12.0
+
+  # Act
+  run_run
+
+  # Assert
+  [ "$status" -eq 0 ]
+  [ "$(sed -n 1p "$GITHUB_STEP_SUMMARY")" = "### lockrot: stub summary" ]
+}
+
 @test "an output path that the action cannot clear fails the step before lockrot runs" {
   export INPUT_FORMAT=sarif INPUT_OUTPUT=build/lockrot.sarif
   mkdir -p "$GITHUB_WORKSPACE/build/lockrot.sarif"

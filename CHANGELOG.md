@@ -169,6 +169,10 @@ lockrot changes is in the [0.14.0 release notes](https://github.com/somework/loc
 - The `working-directory` texts say that lockrot runs there and that `COMPOSER` is read relative
   to it. A `COMPOSER` path that repeats `working-directory` fails the setup step with the doubled
   lock path.
+- A `working-directory` whose name starts with `-`, such as `-x` or `-`, is entered as a
+  directory. `cd` read `-x` as an option, so lockrot did not run, and the `exit-code` output was
+  the code of `cd`. With an `output` path, the step failed with `could not enter the working
+  directory`. `cd` read `-` as the previous directory.
 - A `format` input of whitespace only runs `github`, as an empty one does. It failed the step.
 - The README recipe for a project in a subdirectory sets `COMPOSER: apps/api/composer.json` with
   the default `working-directory`. SARIF, annotations and gitlab output then name
