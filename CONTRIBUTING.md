@@ -53,6 +53,8 @@ docker run --rm -v "$PWD/tests/fixtures/project:/app:ro" lockrot --target-php=8.
 ## Releasing
 
 1. Merge to `main` with `CHANGELOG.md` updated, the **Breaking:** entries of a lockrot bump included.
+   Rename its `## [Unreleased]` heading to `## [1.x.y] - YYYY-MM-DD` and start a new empty
+   `## [Unreleased]` section above it.
 2. Copy the whole `CHANGELOG.md` section of the release into a body file. Keep its introduction,
    its **Breaking:** entries and their Action lines. Then run
    `gh release create v1.x.y --repo somework/lockrot-action --notes-file <body file>` on that

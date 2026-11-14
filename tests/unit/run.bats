@@ -678,6 +678,24 @@ exit-code=0"
   [[ "$output" == *"::warning file=-x/composer.lock,line=12,"* ]] || false
 }
 
+@test "a working directory named - is entered as that directory, not as the previous one" {
+  # Arrange: a lockrot that writes the name of the directory it runs in.
+  export INPUT_FORMAT=markdown INPUT_WORKING_DIRECTORY=-
+  mkdir -p "$GITHUB_WORKSPACE/-" "$SCRATCH/bin"
+  printf '{}\n' > "$GITHUB_WORKSPACE/-/composer.json"
+  printf '{"packages": []}\n' > "$GITHUB_WORKSPACE/-/composer.lock"
+  printf '#!/usr/bin/env bash\ncase "$*" in *json_decode*) exit 0;; esac\nfor a in "$@"; do case $a in --version) echo "lockrot 9.9.9"; exit 0;; --output=*:*) printf "report of %%s\\n" "${PWD##*/}" > "${a#--output=*:}";; esac; done\nexit 0\n' > "$SCRATCH/bin/php"
+  chmod +x "$SCRATCH/bin/php"
+  export PATH="$SCRATCH/bin:$PATH" OLDPWD="$GITHUB_WORKSPACE/project"
+
+  # Act
+  run_run
+
+  # Assert
+  [ "$status" -eq 0 ]
+  [ "$(cat "$(output_value report)")" = "report of -" ]
+}
+
 @test "the output check enters a working directory whose name starts with -" {
   # Arrange
   mkdir -p "$GITHUB_WORKSPACE/-x"

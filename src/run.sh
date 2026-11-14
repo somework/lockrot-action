@@ -40,6 +40,8 @@ main() {
   [ "$actual" = "$expected" ] || fail "lockrot.phar changed after it was verified (sha256 ${actual}, verified ${expected}); nothing will run"
   work_dir=$(native_path "$(trim "${INPUT_WORKING_DIRECTORY:-.}")")
   [ -n "$work_dir" ] || work_dir=.
+  # cd reads a lone - as the previous directory, also after --.
+  [ "$work_dir" != - ] || work_dir=./-
   format=$(trim "${INPUT_FORMAT:-}")
   [ -n "$format" ] || format=github
   case "$format" in
