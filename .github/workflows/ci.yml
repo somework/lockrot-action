@@ -24,7 +24,7 @@ jobs:
         with:
           persist-credentials: false
       - name: shellcheck
-        run: shellcheck -x src/*.sh tests/unit/stubs/* tests/unit/helpers.bash
+        run: shellcheck -x src/*.sh .github/scripts/*.sh tests/unit/stubs/* tests/unit/helpers.bash
       - name: actionlint
         env:
           VERSION: 1.7.12
@@ -154,9 +154,47 @@ jobs:
           case "$REPORT" in *.html) ;; *) echo "the report is not a .html file: $REPORT"; exit 1 ;; esac
           [ -s "$REPORT" ]
           head -c 15 "$REPORT" | grep -qi '<!doctype html'
-          # The page carries the same document --format=json writes, on one line in a script tag.
+          # The page carries the same document --format=json writes, on one line in a script tag:
+          # report-1 up to lockrot 0.13, and from 0.14 report-2, which its $schema URL identifies.
           sed -n 's/.*<script id="lockrot-data" type="application\/json">\(.*\)<\/script>.*/\1/p' "$REPORT" \
-            | jq -e '.report.lockrot.schema == 1 and (.report.findings | length) >= 1'
+            | jq -e '(.report.lockrot.schema == 1 or .report["$schema"] == "https://lockrot.dev/schema/report-2.json")
+              and (.report.findings | type == "array" and length >= 1)'
+
+      - name: An option value after a space in args
+        id: spaced
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          args: --target-php 8.4
+          fail-on: none
+      - name: Check the spaced value
+        shell: bash
+        env:
+          EXIT_CODE: ${{ steps.spaced.outputs.exit-code }}
+        run: |
+          set -eux
+          # Without the command name first, Symfony reads 8.4 as a command and exits 1.
+          [ "$EXIT_CODE" = "0" ]
+
+      - name: The lock as the output path is refused
+        id: guarded
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          output: tests/fixtures/project/composer.lock
+      - name: Check the refusal and the lock
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.guarded.outcome }}
+          EXIT_CODE: ${{ steps.guarded.outputs.exit-code }}
+        run: |
+          set -eux
+          [ "$OUTCOME" = "failure" ]
+          # The action refuses the path before lockrot runs, so the step sets no exit code.
+          [ -z "$EXIT_CODE" ]
+          git diff --exit-code -- tests/fixtures/project/composer.lock
 
       - name: Baseline accepts today's findings
         uses: ./
@@ -180,6 +218,8 @@ jobs:
           set -eux
           [ -s tests/fixtures/project/lockrot-baseline.json ]
           grep -q '1 known' "$REPORT"
+          # The later steps run other lockrot releases, which refuse a baseline of another schema.
+          rm tests/fixtures/project/lockrot-baseline.json
 
       - name: Explicit older release
         id: explicit
@@ -224,6 +264,41 @@ jobs:
           OUTCOME: ${{ steps.badsum.outcome }}
         run: |
           [ "$OUTCOME" = "failure" ]
+
+      # setup-php falls back to GITHUB_TOKEN and COMPOSER_TOKEN from the environment when its
+      # github-token input is empty, as in a job that sets them for its other steps.
+      - name: A token in the environment while setup-php installs PHP
+        uses: ./
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COMPOSER_TOKEN: ${{ github.token }}
+        with:
+          working-directory: tests/fixtures/project
+          target-php: '8.4'
+          php-version: '8.4'
+          fail-on: none
+          cache: 'false'
+      - name: Check that Composer's global auth.json holds no token
+        shell: bash
+        run: |
+          set -eu
+          # The Composer home of setup-php: ~/.composer, and %APPDATA%\Composer on Windows. setup-php
+          # always writes composer.json there, so a home without it is a wrong path, not a pass.
+          appdata=""
+          if [ -n "${APPDATA:-}" ]; then appdata=$(cygpath -u "$APPDATA"); fi
+          found=false
+          for home in "$HOME/.composer" "${appdata:+$appdata/Composer}"; do
+            [ -n "$home" ] && [ -f "$home/composer.json" ] || continue
+            found=true
+            if [ -f "$home/auth.json" ] && grep -q github-oauth "$home/auth.json"; then
+              echo "::error::setup-php wrote a github-oauth entry into $home/auth.json"
+              exit 1
+            fi
+          done
+          if [ "$found" = false ]; then
+            echo "::error::no Composer home of setup-php holds composer.json"
+            exit 1
+          fi
 
   docker:
     name: Docker image

@@ -8,8 +8,9 @@ LOCKROT_RELEASES="https://github.com/${LOCKROT_REPO}/releases"
 # Workflow commands: a `::error::` line is what turns a script failure into a red annotation.
 # Written to stderr so the message survives when the failing function runs inside `$(...)`,
 # whose stdout is captured and discarded by the failing assignment.
+error() { printf '::error::lockrot-action: %s\n' "$*" >&2; }
 fail() {
-  printf '::error::lockrot-action: %s\n' "$*" >&2
+  error "$@"
   exit 1
 }
 warn() { printf '::warning::lockrot-action: %s\n' "$*"; }
@@ -28,6 +29,13 @@ set_output() {
   printf '%s<<%s\n%s\n%s\n' "$1" "$delimiter" "$2" "$delimiter" >> "$GITHUB_OUTPUT"
 }
 
+# $1 an INPUT_* variable name. Prints the input name that action.yml and a workflow use, such as
+# github-token for INPUT_GITHUB_TOKEN.
+input_name() {
+  local name=${1#INPUT_}
+  printf '%s\n' "${name//_/-}" | tr '[:upper:]' '[:lower:]'
+}
+
 # Every input reaches the scripts through an INPUT_* variable; none of them has a legitimate line
 # break, and one inside a path or a version could only be an attempt to write a second line
 # somewhere. $@ are the variable names to check.
@@ -42,7 +50,7 @@ reject_line_breaks() {
     eval "value=\${$name:-}"
     case "$value" in
       *"$newline"*|*"$carriage"*)
-        fail "the ${name#INPUT_} input must not contain a line break" ;;
+        fail "the $(input_name "$name") input must not contain a line break" ;;
     esac
   done
 }
@@ -109,6 +117,23 @@ normalize_version() {
   printf '%s\n' "$version"
 }
 
+# Whether release version $1 is $2 or newer, comparing major, minor and patch as numbers. A
+# pre-release counts as its release (`0.13.0-rc.1` is at least `0.13.0`): an option that appeared
+# in a release is there in its release candidates too.
+version_at_least() {
+  local -a have want
+  IFS=. read -r -a have <<< "${1%%[-+]*}"
+  IFS=. read -r -a want <<< "$2"
+  local i
+  for i in 0 1 2; do
+    if (( 10#${have[i]:-0} != 10#${want[i]:-0} )); then
+      (( 10#${have[i]:-0} > 10#${want[i]:-0} ))
+      return
+    fi
+  done
+  return 0
+}
+
 # 64 hex characters, lowercased, from a bare hash or `sha256:<hex>` or `sha256sum` output.
 normalize_sha256() {
   local hex
@@ -117,7 +142,7 @@ normalize_sha256() {
   printf '%s\n' "$hex"
 }
 
-# The version `releases/latest` currently points at, read from the redirect GitHub answers with
+# The version `releases/latest` points at when the step runs, read from the redirect GitHub answers with
 # for the latest-asset URL. No API call, no token, no JSON parsing.
 resolve_latest_version() {
   local redirect
@@ -138,17 +163,65 @@ download() {
     || fail "could not download $1"
 }
 
+# The lock Composer pairs with the manifest that COMPOSER names, relative to the working directory:
+# `alt.json` gives `alt.lock`, a name without `.json` gets `.lock` appended, no COMPOSER gives
+# `composer.lock`. lockrot reads the same lock, so setup.sh and the annotation rewrite must agree.
+# The path is spelled the way lockrot's annotations spell it: slashes, no doubled slash and no `.`
+# segment.
+# shortcut: `..` segments are not folded, fold them when a workflow needs `COMPOSER=a/../b.json`.
+composer_lock_name() {
+  local manifest
+  manifest=$(native_path "$(trim "${COMPOSER:-}")" | sed -e 's#//*#/#g' -e ':a' -e 's#/\./#/#' -e 'ta')
+  manifest=${manifest#./}
+  case "$manifest" in
+    '') printf 'composer.lock\n' ;;
+    *.json) printf '%s.lock\n' "${manifest%.json}" ;;
+    *) printf '%s.lock\n' "$manifest" ;;
+  esac
+}
+
+# A workflow-command property value the way lockrot's github format writes it for a path of
+# printable characters, so `%`, `:` and `,` in it stay part of the `file=` value.
+escape_property() {
+  printf '%s' "$1" | sed -e 's/%/%25/g' -e 's/:/%3A/g' -e 's/,/%2C/g'
+}
+
 # `file=composer.lock` in a workflow command names the file relative to the checkout root, so a
 # project in a subdirectory needs the directory prepended for the annotation to land on its lock.
 rewrite_annotation_paths() {
-  # $1 report file, $2 working directory relative to the workspace
-  local dir=$2 escaped
+  # $1 report file, $2 working directory relative to the workspace. The copy gets a unique name
+  # beside the report and the report's mode, and a rename replaces the report, so a failure leaves
+  # the report as lockrot wrote it. Returns non-zero after a failure, with the copy removed.
+  local dir=$2 escaped lock root rewritten
   dir=${dir#./}
   dir=${dir%/}
   [ -n "$dir" ] && [ "$dir" != "." ] || return 0
-  escaped=$(printf '%s' "$dir" | sed -e 's/[\/&]/\\&/g')
-  sed -e "s/^\(::[a-z]* file=\)composer\.lock,/\1${escaped}\/composer.lock,/" "$1" > "$1.tmp" \
-    && mv "$1.tmp" "$1"
+  escaped=$(escape_property "$dir" | sed -e 's/[\/&]/\\&/g')
+  lock=$(composer_lock_name)
+  case "$lock" in
+    /*|[A-Za-z]:/*)
+      # lockrot names a lock inside the directory it runs in relative to that directory, and any
+      # other lock by its file name alone, which no prefix can make right.
+      root="$(native_path "${GITHUB_WORKSPACE:-$PWD}")/${dir}/"
+      case "$lock" in
+        "$root"*) lock=${lock#"$root"} ;;
+        *) return 0 ;;
+      esac
+      ;;
+  esac
+  lock=$(escape_property "$lock" | sed -e 's/[]\/$*.^[]/\\&/g')
+  rewritten=$(mktemp "$(dirname "$1")/.lockrot-rewrite.XXXXXX") || return 1
+  if sed -e "s/^\(::[a-z]* file=\)\(${lock}\),/\1${escaped}\/\2,/" "$1" > "$rewritten" \
+    && chmod "$(file_mode "$1")" "$rewritten" && mv -f "$rewritten" "$1"; then
+    return 0
+  fi
+  rm -f "$rewritten"
+  return 1
+}
+
+# The permission bits of $1 in octal: GNU stat (Linux, Git Bash) first, then BSD stat (macOS).
+file_mode() {
+  stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"
 }
 
 report_extension() {

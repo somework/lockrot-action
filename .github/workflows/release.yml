@@ -1,7 +1,8 @@
 name: Release
 
 # Moves the floating major tag (v1) to every published release so `uses: somework/lockrot-action@v1`
-# follows the newest v1.x.y. Pre-releases are left alone.
+# follows the newest v1.x.y. Pre-releases are left alone, and so is a tag whose commit is not on
+# main: every `@v1` consumer runs the commit that v1 names.
 
 on:
   release:
@@ -24,6 +25,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.release.tag_name }}
+          # publish-ref.sh reads whether the tag's commit is on main.
+          fetch-depth: 0
           persist-credentials: false
       # Through the API rather than a git push: no credential is written to disk or put on a
       # command line, and gh reads GH_TOKEN from the environment.
@@ -32,12 +35,14 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Written out, as in the image verifier identity.
+          DEFAULT_BRANCH: main
         run: |
           set -eu
-          case "$TAG" in
-            v[0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "::error::release tag '$TAG' is not vMAJOR.MINOR.PATCH"; exit 1 ;;
-          esac
+          if ! reason=$(.github/scripts/publish-ref.sh "refs/tags/${TAG}"); then
+            echo "::error::The major tag stays: ${reason}."
+            exit 1
+          fi
           major=${TAG%%.*}
           sha=$(git rev-parse HEAD)
           if gh api "repos/${REPO}/git/ref/tags/${major}" > /dev/null 2>&1; then

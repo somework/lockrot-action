@@ -5,6 +5,7 @@ setup() {
   # shellcheck source=src/common.sh
   . "$ACTION_ROOT/src/common.sh"
   SCRATCH="$(mktemp -d)"
+  unset COMPOSER
 }
 teardown() { teardown_scratch; }
 
@@ -12,6 +13,16 @@ teardown() { teardown_scratch; }
   [ "$(normalize_version ' v0.2.1 ')" = "0.2.1" ]
   [ "$(normalize_version '0.10.0')" = "0.10.0" ]
   [ "$(normalize_version '1.0.0-rc.1')" = "1.0.0-rc.1" ]
+}
+
+@test "version_at_least compares major, minor and patch as numbers" {
+  version_at_least 0.13.0 0.13.0
+  version_at_least 0.13.1 0.13.0
+  version_at_least 1.0.0 0.13.0
+  version_at_least 0.13.0-rc.1 0.13.0
+  ! version_at_least 0.12.9 0.13.0
+  ! version_at_least 0.9.0 0.13.0
+  ! version_at_least 0.2.10 0.13.0
 }
 
 @test "normalize_version refuses anything that is not a release version" {
@@ -69,6 +80,25 @@ teardown() { teardown_scratch; }
   [ "$(sed -n 3p "$SCRATCH/r")" = "::notice::note" ]
 }
 
+@test "rewrite_annotation_paths returns non-zero when it cannot read the report" {
+  printf '::error file=composer.lock,line=8::m\n' > "$SCRATCH/r"
+  chmod 000 "$SCRATCH/r"
+  run rewrite_annotation_paths "$SCRATCH/r" app
+  chmod 644 "$SCRATCH/r"
+  [ "$status" -ne 0 ]
+  [ "$(cat "$SCRATCH/r")" = "::error file=composer.lock,line=8::m" ]
+  [ -z "$(ls -A "$SCRATCH" | grep -v '^r$')" ]
+}
+
+@test "rewrite_annotation_paths replaces a read-only report and keeps its mode" {
+  printf '::error file=composer.lock,line=8::m\n' > "$SCRATCH/r"
+  chmod 444 "$SCRATCH/r"
+  rewrite_annotation_paths "$SCRATCH/r" app
+  [ "$(cat "$SCRATCH/r")" = "::error file=app/composer.lock,line=8::m" ]
+  [ "$(ls -l "$SCRATCH/r" | cut -c1-10)" = "-r--r--r--" ]
+  [ -z "$(ls -A "$SCRATCH" | grep -v '^r$')" ]
+}
+
 @test "rewrite_annotation_paths is a no-op for the workspace root" {
   printf '::error file=composer.lock,line=8::m\n' > "$SCRATCH/r"
   rewrite_annotation_paths "$SCRATCH/r" "."
@@ -77,10 +107,71 @@ teardown() { teardown_scratch; }
   [ "$(cat "$SCRATCH/r")" = "::error file=composer.lock,line=8::m" ]
 }
 
+@test "rewrite_annotation_paths prefixes the lock that COMPOSER names" {
+  printf '::error file=alt.lock,line=8,title=t::m\n::warning file=composer.lock,line=2::m\n' > "$SCRATCH/r"
+  COMPOSER=alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web
+  [ "$(sed -n 1p "$SCRATCH/r")" = "::error file=apps/web/alt.lock,line=8,title=t::m" ]
+  [ "$(sed -n 2p "$SCRATCH/r")" = "::warning file=composer.lock,line=2::m" ]
+}
+
+@test "rewrite_annotation_paths matches the lock name literally, not as a pattern" {
+  printf '::error file=altXlock,line=1::m\n::error file=alt.lock,line=2::m\n' > "$SCRATCH/r"
+  COMPOSER=alt.json rewrite_annotation_paths "$SCRATCH/r" app
+  [ "$(sed -n 1p "$SCRATCH/r")" = "::error file=altXlock,line=1::m" ]
+  [ "$(sed -n 2p "$SCRATCH/r")" = "::error file=app/alt.lock,line=2::m" ]
+}
+
+@test "rewrite_annotation_paths prefixes a lock that an absolute COMPOSER names inside the working directory" {
+  printf '::error file=alt.lock,line=1::m\n' > "$SCRATCH/r"
+  GITHUB_WORKSPACE=/w COMPOSER=/w/apps/web/alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web
+  [ "$(cat "$SCRATCH/r")" = "::error file=apps/web/alt.lock,line=1::m" ]
+}
+
+@test "rewrite_annotation_paths leaves the annotation alone for an absolute COMPOSER outside the working directory" {
+  printf '::error file=alt.lock,line=1::m\n' > "$SCRATCH/r"
+  GITHUB_WORKSPACE=/w COMPOSER=/elsewhere/alt.json rewrite_annotation_paths "$SCRATCH/r" apps/web
+  [ "$(cat "$SCRATCH/r")" = "::error file=alt.lock,line=1::m" ]
+}
+
+@test "rewrite_annotation_paths matches a COMPOSER with backslashes or doubled slashes as lockrot writes it" {
+  printf '::error file=sub/alt.lock,line=1::m\n' > "$SCRATCH/r"
+  COMPOSER='sub\alt.json' rewrite_annotation_paths "$SCRATCH/r" app
+  [ "$(cat "$SCRATCH/r")" = "::error file=app/sub/alt.lock,line=1::m" ]
+  printf '::error file=sub/alt.lock,line=1::m\n' > "$SCRATCH/r"
+  COMPOSER='.//sub/.//alt.json' rewrite_annotation_paths "$SCRATCH/r" app
+  [ "$(cat "$SCRATCH/r")" = "::error file=app/sub/alt.lock,line=1::m" ]
+}
+
+@test "composer_lock_name spells the path the way lockrot names it" {
+  [ "$(COMPOSER='sub\alt.json' composer_lock_name)" = "sub/alt.lock" ]
+  [ "$(COMPOSER='.//alt.json' composer_lock_name)" = "alt.lock" ]
+  [ "$(COMPOSER='sub/././alt.json' composer_lock_name)" = "sub/alt.lock" ]
+  [ "$(COMPOSER='/abs//dir/alt.json' composer_lock_name)" = "/abs/dir/alt.lock" ]
+}
+
+@test "composer_lock_name follows COMPOSER the way Composer does" {
+  [ "$(COMPOSER= composer_lock_name)" = "composer.lock" ]
+  [ "$(unset COMPOSER; composer_lock_name)" = "composer.lock" ]
+  [ "$(COMPOSER=alt.json composer_lock_name)" = "alt.lock" ]
+  [ "$(COMPOSER=' app/alt.json ' composer_lock_name)" = "app/alt.lock" ]
+  [ "$(COMPOSER=./alt.json composer_lock_name)" = "alt.lock" ]
+  [ "$(COMPOSER=manifest composer_lock_name)" = "manifest.lock" ]
+  [ "$(COMPOSER=manifest.json5 composer_lock_name)" = "manifest.json5.lock" ]
+}
+
 @test "rewrite_annotation_paths copes with sed-special characters in the directory" {
   printf '::warning file=composer.lock,line=1::m\n' > "$SCRATCH/r"
   rewrite_annotation_paths "$SCRATCH/r" 'a&b/c'
   [ "$(cat "$SCRATCH/r")" = "::warning file=a&b/c/composer.lock,line=1::m" ]
+}
+
+@test "rewrite_annotation_paths escapes the directory and matches the lock as workflow-command properties" {
+  printf '::warning file=composer.lock,line=1::m\n' > "$SCRATCH/r"
+  rewrite_annotation_paths "$SCRATCH/r" 'a,b:c%d'
+  [ "$(cat "$SCRATCH/r")" = "::warning file=a%2Cb%3Ac%25d/composer.lock,line=1::m" ]
+  printf '::error file=x%%2Cy%%3Az%%25.lock,line=2::m\n' > "$SCRATCH/r"
+  COMPOSER='x,y:z%.json' rewrite_annotation_paths "$SCRATCH/r" app
+  [ "$(cat "$SCRATCH/r")" = "::error file=app/x%2Cy%3Az%25.lock,line=2::m" ]
 }
 
 @test "set_output uses the heredoc form so a value cannot smuggle a second output" {
@@ -102,10 +193,21 @@ lines"
   reject_line_breaks INPUT_A
   run reject_line_breaks INPUT_A INPUT_B
   [ "$status" -eq 1 ]
-  [[ "$output" == *"the B input must not contain a line break"* ]]
+  [[ "$output" == *"the b input must not contain a line break"* ]]
   export INPUT_C="$(printf 'cr\rhere')"
   run reject_line_breaks INPUT_C
   [ "$status" -eq 1 ]
+}
+
+@test "input_name gives the action.yml name of every INPUT_ variable that action.yml sets" {
+  local line variable input checked=0
+  while IFS= read -r line; do
+    variable=$(printf '%s\n' "$line" | sed -n 's/^ *\(INPUT_[A-Z_]*\): .*/\1/p')
+    input=$(printf '%s\n' "$line" | sed -n 's/.*inputs\.\([a-z-]*\) }}.*/\1/p')
+    [ "$(input_name "$variable")" = "$input" ]
+    checked=$((checked + 1))
+  done < <(grep -E '^ *INPUT_[A-Z_]*: ' "$BATS_TEST_DIRNAME/../../action.yml")
+  [ "$checked" -gt 0 ]
 }
 
 @test "reject_absolute_path refuses absolute and drive-letter paths" {
