@@ -29,6 +29,13 @@ set_output() {
   printf '%s<<%s\n%s\n%s\n' "$1" "$delimiter" "$2" "$delimiter" >> "$GITHUB_OUTPUT"
 }
 
+# $1 an INPUT_* variable name. Prints the input name that action.yml and a workflow use, such as
+# github-token for INPUT_GITHUB_TOKEN.
+input_name() {
+  local name=${1#INPUT_}
+  printf '%s\n' "${name//_/-}" | tr '[:upper:]' '[:lower:]'
+}
+
 # Every input reaches the scripts through an INPUT_* variable; none of them has a legitimate line
 # break, and one inside a path or a version could only be an attempt to write a second line
 # somewhere. $@ are the variable names to check.
@@ -43,7 +50,7 @@ reject_line_breaks() {
     eval "value=\${$name:-}"
     case "$value" in
       *"$newline"*|*"$carriage"*)
-        fail "the ${name#INPUT_} input must not contain a line break" ;;
+        fail "the $(input_name "$name") input must not contain a line break" ;;
     esac
   done
 }

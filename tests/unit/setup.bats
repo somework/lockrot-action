@@ -80,7 +80,7 @@ run_setup() { run bash "$GITHUB_ACTION_PATH/src/setup.sh"; }
 evil=1"
   run_setup
   [ "$status" -eq 1 ]
-  [[ "$output" == *"the VERSION input must not contain a line break"* ]]
+  [[ "$output" == *"the version input must not contain a line break"* ]]
   export INPUT_VERSION= INPUT_WORKING_DIRECTORY="$GITHUB_WORKSPACE/project"
   run_setup
   [ "$status" -eq 1 ]
